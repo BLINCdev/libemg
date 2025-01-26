@@ -43,6 +43,8 @@ class RegexFilter:
         description: str
             Description of filter - used to name the metadata field.
         """
+        if values is None:
+            raise ValueError('Expected a list of values for RegexFilter, but got None. Using regex wildcard is not supported with the RegexFilter.')
         self.pattern = make_regex(left_bound, right_bound, values)
         self.values = values
         self.description = description
@@ -181,7 +183,7 @@ class FilePackager(MetadataFetcher):
         return packaged_file_data
 
 
-class ColumnFetch(MetadataFetcher):
+class ColumnFetcher(MetadataFetcher):
     def __init__(self, description: str, column_mask: Sequence[int] | int, values: Sequence | None = None):
         """Fetch metadata from columns within data file.
 
@@ -261,7 +263,7 @@ class OfflineDataHandler(DataHandler):
         return new_odh
         
     def get_data(self, folder_location: str, regex_filters: Sequence[RegexFilter], metadata_fetchers: Sequence[MetadataFetcher] | None = None, delimiter: str = ',',
-                 mrdf_key: str = 'p_signal', skiprows: int = 0, data_column: Sequence[int] | None = None, downsampling_factor: int | None = None):
+                 mrdf_key: str = 'p_signal', skiprows: int = 0, data_column: Sequence[int] | None = None, downsampling_factor: int | None = None, sort_files: bool = False, _3DC: bool = False):
         """Method to collect data from a folder into the OfflineDataHandler object. The relevant data files can be selected based on passing in 
         RegexFilters, which will filter out non-matching files and grab metadata from the filename based on their provided description. Data can be labelled with other
         sources of metadata via passed in MetadataFetchers, which will associate metadata with each data file.
@@ -300,6 +302,11 @@ class OfflineDataHandler(DataHandler):
             current_value = getattr(self, name)
             setattr(self, name, current_value + [value])
 
+        def sort_key_3DC(filename):
+            parts = filename.split('_')
+            # sort first by rep and then by gestures 0 through 10
+            return int(parts[4]), int(parts[5].split('.')[0])
+
         if not os.path.isdir(folder_location):
             raise ValueError(f"Folder location {folder_location} is not a directory.")
 
@@ -315,9 +322,16 @@ class OfflineDataHandler(DataHandler):
         for regex_filter in regex_filters:
             data_files = regex_filter.get_matching_files(data_files)
         print(f"{len(data_files)} data files fetched out of {len(all_files)} files.")
-
+        # print(data_files)
+        if sort_files:
+            # 3DC dataset will get sorted wrong if we don't handle it differently (gesture 10 will be slotted incorrectly between 1 and 2)
+            if _3DC:
+                data_files = sorted(data_files, key=sort_key_3DC)
+            else:
+                data_files.sort()
         # Read data from files
         for file in data_files:
+            # print(file)
             if '.hea' in file:
                 # The key is the emg key that is in the mrdf file
                 file_data = (wfdb.rdrecord(file.replace('.hea',''))).__getattribute__(mrdf_key)
@@ -338,6 +352,7 @@ class OfflineDataHandler(DataHandler):
 
             # Fetch metadata from filename
             for regex_filter in regex_filters:
+                # for example this will set the class label to the index the class string appears in the values list
                 metadata_idx = regex_filter.get_metadata(file)
                 metadata = metadata_idx * np.ones((file_data.shape[0], 1), dtype=int)
                 append_to_attribute(regex_filter.description, metadata)
@@ -395,6 +410,13 @@ class OfflineDataHandler(DataHandler):
             The number of samples in a window. 
         window_increment: int
             The number of samples that advances before next window.
+        metadata_operations: dict or None (optional),default=None
+            Specifies which operations should be performed on metadata attributes when performing windowing. By default,
+            all metadata is stored as its mode in a window. To change this behaviour, specify the metadata attribute as the key and
+            the operation as the value in the dictionary. The operation (value) should either be an accepted string (mean, median, last_sample) or
+            a function handle that takes in an ndarray of size (window_size, ) and returns a single value to represent the metadata for that window. Passing in a string
+            will map from that string to the specified operation. The windowing of only the attributes specified in this dictionary will be modified - all other
+            attributes will default to the mode. If None, all attributes default to the mode. Defaults to None.
         
         Returns
         ----------
@@ -407,6 +429,12 @@ class OfflineDataHandler(DataHandler):
         return self._parse_windows_helper(window_size, window_increment, metadata_operations)
 
     def _parse_windows_helper(self, window_size, window_increment, metadata_operations):
+        common_metadata_operations = {
+            'mean': np.mean,
+            'median': np.median,
+            'last_sample': lambda x: x[-1]
+        }
+
         metadata_ = {}
         for i, file in enumerate(self.data):
             # emg data windowing
@@ -423,7 +451,14 @@ class OfflineDataHandler(DataHandler):
                     if metadata_operations is not None:
                         if k in metadata_operations.keys():
                             # do the specified operation
-                            file_metadata = _get_fn_windows(getattr(self,k)[i], window_size, window_increment, metadata_operations[k])
+                            operation = metadata_operations[k]
+                            
+                            if isinstance(operation, str):
+                                try:
+                                    operation = common_metadata_operations[operation]
+                                except KeyError as e:
+                                    raise KeyError(f"Unexpected metadata operation string. Please pass in a function or an accepted string {tuple(common_metadata_operations.keys())}. Got: {operation}.")
+                            file_metadata = _get_fn_windows(getattr(self,k)[i], window_size, window_increment, operation)
                         else:
                             file_metadata = _get_mode_windows(getattr(self,k)[i], window_size, window_increment)
                     else:
@@ -461,7 +496,7 @@ class OfflineDataHandler(DataHandler):
             new_odh.data[i] = new_odh.data[i][:,channels]
         return new_odh
     
-    def isolate_data(self, key, values):
+    def isolate_data(self, key, values, fast=False):
         """Entry point for isolating a single key of data within the offline data handler. First, error checking is performed within this method, then
         if it passes, the isolate_data_helper is called to make a new OfflineDataHandler that contains only that data.
 
@@ -471,6 +506,8 @@ class OfflineDataHandler(DataHandler):
             The metadata key that will be used to filter (e.g., "subject", "rep", "class", "set", whatever you'd like).
         values: list
             A list of values that you want to isolate. (e.g. [0,1,2,3]). Indexing starts at 0.
+        fast: Boolean (default=False)
+            If true, it iterates over the median value for each EMG element. This should be used when parsing on things like reps, subjects, classes, etc.
             
         Returns
         ----------
@@ -479,47 +516,31 @@ class OfflineDataHandler(DataHandler):
         """
         assert key in self.extra_attributes
         assert type(values) == list 
-        return self._isolate_data_helper(key,values)
+        return self._isolate_data_helper(key,values,fast)
 
-    def _isolate_data_helper(self, key, values):
+    def _isolate_data_helper(self, key, values,fast):
         new_odh = OfflineDataHandler()
         setattr(new_odh, "extra_attributes", self.extra_attributes)
         key_attr = getattr(self, key)
-        
-        # if these end up being ndarrays, it means that the metadata was IN the csv file.
-        
-        if type(key_attr[0]) == np.ndarray:
-            # for every file (list element)
-            data = []
-            for f in range(len(key_attr)):
-                # get the keep_mask
-                keep_mask = list([i in values for i in key_attr[f]])
-                # append the valid data
-                if self.data[f][keep_mask,:].shape[0]> 0:
-                    data.append(self.data[f][keep_mask,:])
-            setattr(new_odh, "data", data)
-
-            for k in self.extra_attributes:
-                key_value = getattr(self, k)
-                if type(key_value[0]) == np.ndarray:
-                    # the other metadata that is in the csv file should be sliced the same way as the ndarray
-                    key = []
-                    for f in range(len(key_attr)):
-                        keep_mask = list([i in values for i in key_attr[f]])
-                        if key_value[f][keep_mask,:].shape[0]>0:
-                            key.append(key_value[f][keep_mask,:])
-                    setattr(new_odh, k, key)
-                    
+        for e in self.extra_attributes:
+            setattr(new_odh, e, [])
+                
+        for f in range(len(key_attr)):
+            if fast:
+                if key_attr[f][0][0] in values:
+                    keep_mask = [True] * len(key_attr[f])
                 else:
-                    assert False # we should never get here
-                    # # if the other metadata was not in the csv file (i.e. subject label in filename but classes in csv), then just keep it
-                    # setattr(new_odh, k, key_value)
-        else:
-            assert False # we should never get here
-            # keep_mask = list([i in values for i in key_attr])
-            # setattr(new_odh, "data", list(compress(self.data, keep_mask)))
-            # for k in self.extra_attributes:
-            #     setattr(new_odh, k,list(compress(getattr(self, k), keep_mask)))
+                    keep_mask = [False] * len(key_attr[f])
+            else:
+                keep_mask = list([i in values for i in key_attr[f]])
+            
+            if self.data[f][keep_mask,:].shape[0]> 0:
+                new_odh.data.append(self.data[f][keep_mask,:])
+                for e in self.extra_attributes:
+                    updated_arr = getattr(new_odh, e)
+                    updated_arr.append(getattr(self, e)[f][keep_mask])
+                    setattr(new_odh, e, updated_arr)
+
         return new_odh
     
     def visualize():
@@ -536,13 +557,17 @@ class OnlineDataHandler(DataHandler):
     ----------
     shared_memory_items: Object
         The shared memory object returned from the streamer.
+    channel_mask: list or None (optional), default=None
+        Mask of active channels to use online. Allows certain channels to be ignored when streaming in real-time. If None, all channels are used.
+        Defaults to None.
     """
-    def __init__(self, shared_memory_items):
+    def __init__(self, shared_memory_items, channel_mask = None):
         self.shared_memory_items = shared_memory_items
         self.prepare_smm()
         self.log_signal = Event()
         self.visualize_signal = Event()        
         self.fi = None
+        self.channel_mask = channel_mask
     
     def prepare_smm(self):
         self.modalities = []
@@ -583,6 +608,17 @@ class OnlineDataHandler(DataHandler):
             The filter object that you'd like to run on the online data.
         """
         self.fi = fi
+
+    def install_channel_mask(self, mask):
+        """Install a channel mask to isolate certain channels for online streaming.
+
+        Parameters
+        ----------
+        mask: list or None (optional), default=None
+            Mask of active channels to use online. Allows certain channels to be ignored when streaming in real-time. If None, all channels are used.
+            Defaults to None.
+        """
+        self.channel_mask = mask
 
 
     def analyze_hardware(self, analyze_time=10):
@@ -771,7 +807,8 @@ class OnlineDataHandler(DataHandler):
             # Extract features along each channel
             windows = data[np.newaxis].transpose(0, 2, 1)   # add axis and tranpose to convert to (windows x channels x samples)
             fe = FeatureExtractor()
-            feature_set_dict = fe.extract_features(feature_list, windows)
+            feature_set_dict = fe.extract_features(feature_list, windows, array=False)
+            assert isinstance(feature_set_dict, dict), f"Expected dictionary of features. Got: {type(feature_set_dict)}."
             if remap_function is not None:
                 # Remap raw data to image format
                 for key in feature_set_dict:
@@ -949,6 +986,8 @@ class OnlineDataHandler(DataHandler):
                 val[mod]   = data[:N,:]
             else:
                 val[mod]   = data[:,:]
+            if self.channel_mask is not None:
+                val[mod] = val[mod][:, self.channel_mask]
             count[mod] = self.smm.get_variable(mod+"_count")
         return val,count
 

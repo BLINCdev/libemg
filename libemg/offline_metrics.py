@@ -262,7 +262,11 @@ class OfflineMetrics:
             tp = len(np.where(y_predictions[c_true] == classes[c])[0])
             fn = len(np.where(y_predictions[c_true] != classes[c])[0])
             weights[c] = len(c_true[0])/len(y_true)
-            recall[c] = tp / (tp + fn)
+            if (tp + fn) == 0:
+                print(f"WARNING: true positives ({tp}) + false negatives ({fn}) equals zero during recall calculation for class {c}!")
+                recall[c] = 0
+            else:
+                recall[c] = tp / (tp + fn)
         return recall, weights
 
     def get_PREC(self, y_true, y_predictions):
@@ -296,7 +300,11 @@ class OfflineMetrics:
             tp = len(np.where(y_predictions[c_true] == classes[c])[0])
             fp = len(np.where(y_predictions[c_false] == classes[c])[0])
             weights[c] = len(c_true[0])/len(y_true)
-            precision[c] = tp / (tp + fp)
+            if (tp + fp) == 0:
+                print(f"WARNING: true positives ({tp}) + false positives ({fp}) equals zero during precision calculation for class {c}!")
+                precision[c] = 0
+            else:
+                precision[c] = tp / (tp + fp)
         return precision, weights
 
     def get_F1(self, y_true, y_predictions):
@@ -317,6 +325,11 @@ class OfflineMetrics:
         list
             Returns a list consisting of the f1 score for each class.
         """
+        # ignore rejections
+        valid_samples = y_predictions != -1
+        y_predictions = y_predictions[valid_samples]
+        y_true        = y_true[valid_samples]
+
         prec, weights = self._get_PREC_helper(y_true, y_predictions)
         recall, _ = self._get_RECALL_helper(y_true, y_predictions)
         f1 = 2 * (prec * recall) / (prec + recall)
