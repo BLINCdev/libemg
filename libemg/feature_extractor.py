@@ -706,7 +706,7 @@ class FeatureExtractor:
 
         return num/den
 
-    def getARfeat(self, windows, AR_order=4):
+    def getARfeat(self, windows, AR_order=6):
         """Extract Autoregressive Coefficients (AR) feature.
         
         Parameters
