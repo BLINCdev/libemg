@@ -884,10 +884,10 @@ class OnlineDataHandler(DataHandler):
             if not data:
                 raise ValueError("No data available to visualize")
             
-            print("Debug - Available data:")
-            print(f"Data keys: {data.keys()}")
-            for key in data:
-                print(f"{key} shape: {data[key].shape}")
+            # print("Debug - Available data:")
+            # print(f"Data keys: {data.keys()}")
+            # for key in data:
+            #     print(f"{key} shape: {data[key].shape}")
             
             pyplot.style.use('ggplot')
             fig, ax = pyplot.subplots(2, 1, figsize=(12, 6), height_ratios=[1, 9])
@@ -923,14 +923,14 @@ class OnlineDataHandler(DataHandler):
                     data, _ = self.get_data()
                     if 'emg' in data and len(data['emg']) > 0:
                         mod_data = data['emg']
-                        print(f"Debug - EMG data shape: {mod_data.shape}")  # Debug print
+                        # print(f"Debug - EMG data shape: {mod_data.shape}")  # Debug print
                         
                         mod_data = mod_data - np.mean(mod_data, axis=0)
                         x_data = np.arange(len(mod_data))
                         spacing = 1.5 * np.max(np.abs(mod_data))
 
-                        print(f"Debug - Number of lines: {len(lines)}")  # Debug print
-                        print(f"Debug - Number of EMG channels: {mod_data.shape[1]}")  # Debug print
+                        # print(f"Debug - Number of lines: {len(lines)}")  # Debug print
+                        # print(f"Debug - Number of EMG channels: {mod_data.shape[1]}")  # Debug print
 
                         for i in range(mod_data.shape[1]):
                             lines[0][i].set_data(x_data, mod_data[:, i] + (spacing * i))   
@@ -939,21 +939,21 @@ class OnlineDataHandler(DataHandler):
                     if 'imu' in data and len(data['imu']) > 0:
                         # Update IMU plots - use all channels regardless of input channel list
                         mod_data = data['imu']
-                        print(f"Debug - IMU data shape: {mod_data.shape}")  # Debug print
+                        # print(f"Debug - IMU data shape: {mod_data.shape}")  # Debug print
                         
 
                         imu_samples = num_samples // 9
                         if len(mod_data) > imu_samples:
                             mod_data = mod_data[-imu_samples:]
                         
-                        print(f"Debug - IMU data shape after slicing: {mod_data.shape}")  # Debug print
+                        # print(f"Debug - IMU data shape after slicing: {mod_data.shape}")  # Debug print
                         
                         mod_data = mod_data - np.mean(mod_data, axis=0)
                         x_data = np.arange(len(mod_data))
                         spacing = 1.5 * np.max(np.abs(mod_data))
                         
-                        print(f"Debug - Number of lines: {len(lines)}")  # Debug print
-                        print(f"Debug - Number of IMU channels: {mod_data.shape[1]}")  # Debug print
+                        # print(f"Debug - Number of lines: {len(lines)}")  # Debug print
+                        # print(f"Debug - Number of IMU channels: {mod_data.shape[1]}")  # Debug print
                         
                         for i in range(mod_data.shape[1]):
                             lines[1][i].set_data(x_data, mod_data[:, i] + (spacing * i))
@@ -1219,9 +1219,9 @@ class OnlineDataHandler(DataHandler):
         for item in self.shared_memory_items:
             if "_count" not in item[0]:  # Skip count variables
                 try:
-                    print(f"Debug - Accessing {item[0]} from shared memory")  # Debug print
+                    # print(f"Debug - Accessing {item[0]} from shared memory")  # Debug print
                     data = self.smm.get_variable(item[0])
-                    print(f"Debug - {item[0]} shape: {data.shape}")  # Debug print
+                    # print(f"Debug - {item[0]} shape: {data.shape}")  # Debug print
                     
                     # Apply filter if needed
                     if filter and self.fi is not None and item[0] == 'emg':
@@ -1229,7 +1229,7 @@ class OnlineDataHandler(DataHandler):
                     
                     # Slice data if N is specified
                     val[item[0]] = data[:N,:] if N != 0 else data[:,:]
-                    print(f"Debug - Final {item[0]} shape: {val[item[0]].shape}")  # Debug print
+                    # print(f"Debug - Final {item[0]} shape: {val[item[0]].shape}")  # Debug print
                     
                     count[item[0]] = self.smm.get_variable(item[0]+"_count")
                 except AssertionError:
