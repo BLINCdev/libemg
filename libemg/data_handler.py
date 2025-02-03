@@ -680,93 +680,304 @@ class OnlineDataHandler(DataHandler):
             p = Process(target=self._visualize, kwargs={"num_samples":num_samples})
             p.start()
 
-    def _visualize(self, num_samples):
-        self.prepare_smm()
 
-        pyplot.style.use('ggplot')
-        plots = []
-        fig, ax = pyplot.subplots(len(self.modalities), 1,squeeze=False)
-        def on_close(event):
-            self.visualize_signal.set()
-        fig.canvas.mpl_connect('close_event', on_close)
-        fig.suptitle('Raw Data', fontsize=16)
-        for i,mod in enumerate(self.modalities):
-            num_channels = self.smm.get_variable(mod).shape[1]
-            for j in range(0,num_channels):
-                plots.append(ax[i][0].plot([],[],label=mod+"_CH"+str(j+1)))
+    def _visualize(self, num_samples):
+        """Visualize EMG and IMU data in separate subplots."""
+        try:
+            self.prepare_smm()
+            
+            # Get initial data shapes and determine available modalities
+            data, _ = self.get_data(N=0, filter=True)
+            available_modalities = list(data.keys())
+            print(f"Available modalities: {available_modalities}")  # Debug print
+            
+            if not available_modalities:
+                raise ValueError("No data modalities available to visualize")
+            
+            # Create figure with appropriate number of subplots
+            pyplot.style.use('ggplot')
+            num_subplots = len(available_modalities)
+            fig, axes = pyplot.subplots(num_subplots, 1, figsize=(12, 6*num_subplots))
+            if num_subplots == 1:
+                axes = [axes]  # Make axes iterable when only one subplot
+            fig.suptitle('Raw Data', fontsize=16)
+            
+            # Setup close event
+            def on_close(event):
+                self.visualize_signal.set()
+            fig.canvas.mpl_connect('close_event', on_close)
+            
+            # Initialize plots for each modality
+            plot_lines = {}
+            for ax, modality in zip(axes, available_modalities):
+                ax.set_title(f'{modality.upper()} Data')
+                lines = []
+                
+                if modality == 'emg':
+                    num_channels = data[modality].shape[1]
+                    for i in range(num_channels):
+                        line, = ax.plot([], [], label=f'EMG_CH{i+1}')
+                        lines.append(line)
+                elif modality == 'imu':
+                    num_channels = data[modality].shape[1]
+                    imu_labels = ['Acc_X', 'Acc_Y', 'Acc_Z', 'Gyro_X', 'Gyro_Y', 'Gyro_Z']
+                    for i in range(num_channels):
+                        line, = ax.plot([], [], label=imu_labels[i])
+                        lines.append(line)
+                
+                ax.legend(loc='upper right')
+                plot_lines[modality] = {'lines': lines, 'ax': ax}
+            
+            pyplot.tight_layout()
+            
+            def update(frame):
+                try:
+                    data, _ = self.get_data(N=0, filter=True)
+                    all_lines = []
+                    
+                    for modality in available_modalities:
+                        if data[modality].size > 0:
+                            mod_data = data[modality]
+                            
+                            # Adjust samples based on modality
+                            if modality == 'imu':
+                                mod_samples = num_samples // 6
+                            else:
+                                mod_samples = num_samples
+                            
+                            if len(mod_data) > mod_samples:
+                                mod_data = mod_data[-mod_samples:]
+                            
+                            # Center data
+                            mod_data = mod_data - np.mean(mod_data, axis=0)
+                            x_data = np.arange(len(mod_data))
+                            spacing = 1.5 * np.max(np.abs(mod_data))
+                            
+                            # Update each channel
+                            lines = plot_lines[modality]['lines']
+                            ax = plot_lines[modality]['ax']
+                            
+                            for i in range(mod_data.shape[1]):
+                                lines[i].set_data(x_data, mod_data[:, i] + (spacing * i))
+                            
+                            ax.relim()
+                            ax.autoscale_view()
+                            all_lines.extend(lines)
+                    
+                    return all_lines
+                except Exception as e:
+                    print(f"Error in update: {str(e)}")
+                    return []
+            
+            while True:
+                ani = FuncAnimation(fig, update, interval=100, repeat=False)
+                pyplot.show()
+                if self.visualize_signal.is_set():
+                    print("ODH->visualize ended.")
+                    break
+                    
+        except Exception as e:
+            print(f"Error in visualization: {str(e)}")
+            traceback.print_exc()  # This will print the full traceback
+
+
+    # def _visualize(self, num_samples):
+    #     self.prepare_smm()
+
+    #     pyplot.style.use('ggplot')
+    #     plots = []
+    #     fig, ax = pyplot.subplots(len(self.modalities), 1,squeeze=False)
+    #     def on_close(event):
+    #         self.visualize_signal.set()
+    #     fig.canvas.mpl_connect('close_event', on_close)
+    #     fig.suptitle('Raw Data', fontsize=16)
+    #     for i,mod in enumerate(self.modalities):
+    #         num_channels = self.smm.get_variable(mod).shape[1]
+    #         for j in range(0,num_channels):
+    #             plots.append(ax[i][0].plot([],[],label=mod+"_CH"+str(j+1)))
         
-        fig.legend()
+    #     fig.legend()
         
-        def update(frame):
-            data, _ = self.get_data(N=0,filter=True)
-            line = 0
-            for i, mod in enumerate(self.modalities):
-                for j in range(data[mod].shape[1]):
-                    data[mod][:,j] = data[mod][:,j] - np.mean(data[mod][:,j])
-                inter_channel_amount = 1.5 * np.max(data[mod])
-                if len(data[mod]) > num_samples:
-                    data[mod] = data[mod][:num_samples,:]
-                if len(data[mod]) > 0:
-                    x_data = list(range(0,data[mod].shape[0]))
-                    num_channels = data[mod].shape[1]
-                    for j in range(0,num_channels):
-                        y_data = data[mod][:,j]
-                        plots[line][0].set_data(x_data, y_data +inter_channel_amount*j)
-                        line += 1
-            for i in range(len(self.modalities)):
-                ax[i][0].relim()
-                ax[i][0].autoscale_view()
-                ax[i][0].set_title(self.modalities[i])
-            return plots,
+    #     def update(frame):
+    #         data, _ = self.get_data(N=0,filter=True)
+    #         line = 0
+    #         for i, mod in enumerate(self.modalities):
+    #             for j in range(data[mod].shape[1]):
+    #                 data[mod][:,j] = data[mod][:,j] - np.mean(data[mod][:,j])
+    #             inter_channel_amount = 1.5 * np.max(data[mod])
+    #             if len(data[mod]) > num_samples:
+    #                 data[mod] = data[mod][:num_samples,:]
+    #             if len(data[mod]) > 0:
+    #                 x_data = list(range(0,data[mod].shape[0]))
+    #                 num_channels = data[mod].shape[1]
+    #                 for j in range(0,num_channels):
+    #                     y_data = data[mod][:,j]
+    #                     plots[line][0].set_data(x_data, y_data +inter_channel_amount*j)
+    #                     line += 1
+    #         for i in range(len(self.modalities)):
+    #             ax[i][0].relim()
+    #             ax[i][0].autoscale_view()
+    #             ax[i][0].set_title(self.modalities[i])
+    #         return plots,
     
-        while True:
-            animation = FuncAnimation(fig, update, interval=100, repeat=False)
-            pyplot.show()
-            if self.visualize_signal.is_set():
-                print("ODH->visualize ended.")
-                break
+    #     while True:
+    #         animation = FuncAnimation(fig, update, interval=100, repeat=False)
+    #         pyplot.show()
+    #         if self.visualize_signal.is_set():
+    #             print("ODH->visualize ended.")
+    #             break
+
+#   def visualize_channels(self, channels, num_samples=500, y_axes=None):
+#         """Visualize individual channels (each channel in its own plot).
+
+#         Parameters
+#         ----------
+#         channels: list
+#             A list of channels to graph indexing starts at 0.
+#         num_samples: int (optional), default=500
+#             The number of samples to show in the plot.
+#         y_axes: list (optional)
+#             A list of two elements consisting of the y-axes.
+#         """
+#         self.prepare_smm()
+#         pyplot.style.use('ggplot')
+#         while not self._check_streaming():
+#             pass
+#         emg_plots = []
+#         fig, ax = pyplot.subplots()
+#         fig.suptitle('Raw Data', fontsize=16)
+#         for i in range(0,len(channels)):
+#             emg_plots.append(ax.plot([],[],label="CH"+str(channels[i])))
+
+#         def update(frame):
+#             data, _ = self.get_data()
+#             data = data['emg']
+#             data = data[:,channels]
+#             inter_channel_amount = 1.5 * np.max(data)
+#             if len(data) > num_samples:
+#                 data = data[:num_samples,:]
+#             if len(data) > 0:
+#                 x_data = list(range(0,data.shape[0]))
+            
+#                 for i in range(data.shape[1]):
+#                     y_data = data[:,i]
+#                     emg_plots[i][0].set_data(x_data, y_data +inter_channel_amount*i)
+#                 fig.gca().relim()
+#                 fig.gca().autoscale_view()
+#             return emg_plots,
+
+#         animation = FuncAnimation(fig, update, interval=100)
+#         pyplot.show()
+
 
     def visualize_channels(self, channels, num_samples=500, y_axes=None):
-        """Visualize individual channels (each channel in its own plot).
-
-        Parameters
-        ----------
-        channels: list
-            A list of channels to graph indexing starts at 0.
-        num_samples: int (optional), default=500
-            The number of samples to show in the plot.
-        y_axes: list (optional)
-            A list of two elements consisting of the y-axes.
-        """
-        self.prepare_smm()
-        pyplot.style.use('ggplot')
-        while not self._check_streaming():
-            pass
-        emg_plots = []
-        fig, ax = pyplot.subplots()
-        fig.suptitle('Raw Data', fontsize=16)
-        for i in range(0,len(channels)):
-            emg_plots.append(ax.plot([],[],label="CH"+str(channels[i])))
-
-        def update(frame):
-            data, _ = self.get_data()
-            data = data['emg']
-            data = data[:,channels]
-            inter_channel_amount = 1.5 * np.max(data)
-            if len(data) > num_samples:
-                data = data[:num_samples,:]
-            if len(data) > 0:
-                x_data = list(range(0,data.shape[0]))
+        """Visualize individual channels (each channel in its own plot)."""
+        try:
+            print("Starting visualization...")
             
-                for i in range(data.shape[1]):
-                    y_data = data[:,i]
-                    emg_plots[i][0].set_data(x_data, y_data +inter_channel_amount*i)
-                fig.gca().relim()
-                fig.gca().autoscale_view()
-            return emg_plots,
+            if not isinstance(channels, list):
+                raise ValueError(f"channels must be a list, got {type(channels)}")
+            
+            self.prepare_smm()
+            data, _ = self.get_data(N=0, filter=True)
+            
+            if not data:
+                raise ValueError("No data available to visualize")
+            
+            print("Debug - Available data:")
+            print(f"Data keys: {data.keys()}")
+            for key in data:
+                print(f"{key} shape: {data[key].shape}")
+            
+            pyplot.style.use('ggplot')
+            fig, ax = pyplot.subplots(2, 1, figsize=(12, 6), height_ratios=[1, 9])
+            
+            # Initialize plots based on available data
+            lines = []
+            if 'emg' in data:
+                emg_lines = []
+                # Plot EMG channels if EMG data is available
+                for i in channels:
+                    if i < data['emg'].shape[1]:
+                        line, = ax[0].plot([], [], label=f'EMG_CH{i+1}')
+                        emg_lines.append(line)
+                ax[0].set_title('EMG Data')
+                lines.append(emg_lines)
+            if 'imu' in data:
+                # If only IMU is available, ignore the input channels and plot all IMU channels
+                imu_lines = []
+                imu_labels = ['Acc_X', 'Acc_Y', 'Acc_Z', 'Gyro_X', 'Gyro_Y', 'Gyro_Z', 'Mag_X', 'Mag_Y', 'Mag_Z']
+                for i in range(data['imu'].shape[1]):
+                    line, = ax[1].plot([], [], label=f"{imu_labels[i%9]}_{i//9+1}")
+                    imu_lines.append(line)
+                ax[1].set_title('IMU Data')
+                lines.append(imu_lines)
+            
+            ax[0].legend(loc='upper right')
+            ax[1].legend(loc='upper right')
+            pyplot.tight_layout()
+            
 
-        animation = FuncAnimation(fig, update, interval=100)
-        pyplot.show()
+            def update(frame):
+                try:
+                    data, _ = self.get_data()
+                    if 'emg' in data and len(data['emg']) > 0:
+                        mod_data = data['emg']
+                        print(f"Debug - EMG data shape: {mod_data.shape}")  # Debug print
+                        
+                        mod_data = mod_data - np.mean(mod_data, axis=0)
+                        x_data = np.arange(len(mod_data))
+                        spacing = 1.5 * np.max(np.abs(mod_data))
+
+                        print(f"Debug - Number of lines: {len(lines)}")  # Debug print
+                        print(f"Debug - Number of EMG channels: {mod_data.shape[1]}")  # Debug print
+
+                        for i in range(mod_data.shape[1]):
+                            lines[0][i].set_data(x_data, mod_data[:, i] + (spacing * i))   
+
+
+                    if 'imu' in data and len(data['imu']) > 0:
+                        # Update IMU plots - use all channels regardless of input channel list
+                        mod_data = data['imu']
+                        print(f"Debug - IMU data shape: {mod_data.shape}")  # Debug print
+                        
+
+                        imu_samples = num_samples // 9
+                        if len(mod_data) > imu_samples:
+                            mod_data = mod_data[-imu_samples:]
+                        
+                        print(f"Debug - IMU data shape after slicing: {mod_data.shape}")  # Debug print
+                        
+                        mod_data = mod_data - np.mean(mod_data, axis=0)
+                        x_data = np.arange(len(mod_data))
+                        spacing = 1.5 * np.max(np.abs(mod_data))
+                        
+                        print(f"Debug - Number of lines: {len(lines)}")  # Debug print
+                        print(f"Debug - Number of IMU channels: {mod_data.shape[1]}")  # Debug print
+                        
+                        for i in range(mod_data.shape[1]):
+                            lines[1][i].set_data(x_data, mod_data[:, i] + (spacing * i))
+                    
+                    ax[0].relim()
+                    ax[0].autoscale_view()
+                    ax[1].relim()
+                    ax[1].autoscale_view()
+                    return lines
+                except Exception as e:
+
+                    import traceback
+                    print("Error in update function:")
+                    print(traceback.format_exc())  # This will print the full traceback
+                    return lines
+            
+            animation = FuncAnimation(fig, update, interval=100)
+            pyplot.show()
+            
+        except Exception as e:
+            import traceback
+            print("Error in visualize_channels:")
+            print(traceback.format_exc())  # This will print the full traceback
+            raise
     
     def visualize_heatmap(self, num_samples = 500, feature_list = None, remap_function = None, cmap = None):
         """Visualize heatmap representation of EMG signals. This is commonly used to represent HD-EMG signals.
@@ -956,40 +1167,84 @@ class OnlineDataHandler(DataHandler):
     #         animation = FuncAnimation(fig, update, interval=(1000/sampling_rate * window_increment))
     #         plt.show()
 
+    # def get_data(self, N=0, filter=True):
+    #     """Grab the data in the shared memory buffer across all modalities.
+ 
+    #     Parameters
+    #     ----------
+    #     N : int
+    #         Number of samples to grab from the shared memory items. If zero, grabs all data.
+    #     filter: bool
+    #         Apply the installed filters to the data prior to returning or not.
+ 
+    #     Returns
+    #     ----------
+    #     val: dict
+    #         A dictionary with keys corresponding to the modalities. Each key will have a np.ndarray of data returned.
+    #     count: dict
+    #         A dictionary with keys corresponding to the modalities. Each key will have an int corresponding to the number
+    #         of samples received since the streamer began (or the last reset call).
+    #     """
+    #     val   = {}
+    #     count = {}
+    #     for mod in self.modalities:
+    #         data = self.smm.get_variable(mod)
+    #         if filter:
+    #             if self.fi is not None:
+    #                 if mod == "emg": # TODO: enable filter for each modality
+    #                     data = self.fi.filter(data)
+    #         if N != 0:
+    #             val[mod]   = data[:N,:]
+    #         else:
+    #             val[mod]   = data[:,:]
+    #         if self.channel_mask is not None:
+    #             val[mod] = val[mod][:, self.channel_mask]
+    #         count[mod] = self.smm.get_variable(mod+"_count")
+    #     return val,count
+    def debug_data_shapes(self):
+        """Debug method to print raw data shapes from shared memory."""
+        print("\nDEBUG: Raw Data Shapes")
+        for item in self.shared_memory_items:
+            if "_count" not in item[0]:
+                data = self.smm.get_variable(item[0])
+                print(f"{item[0]} shape: {data.shape}")
+                print(f"{item[0]} first few values: {data[:5] if len(data) > 0 else 'empty'}")
+
     def get_data(self, N=0, filter=True):
-        """Grab the data in the shared memory buffer across all modalities.
- 
-        Parameters
-        ----------
-        N : int
-            Number of samples to grab from the shared memory items. If zero, grabs all data.
-        filter: bool
-            Apply the installed filters to the data prior to returning or not.
- 
-        Returns
-        ----------
-        val: dict
-            A dictionary with keys corresponding to the modalities. Each key will have a np.ndarray of data returned.
-        count: dict
-            A dictionary with keys corresponding to the modalities. Each key will have an int corresponding to the number
-            of samples received since the streamer began (or the last reset call).
-        """
-        val   = {}
+        """Grab the data in the shared memory buffer across all modalities."""
+        val = {}
         count = {}
-        for mod in self.modalities:
-            data = self.smm.get_variable(mod)
-            if filter:
-                if self.fi is not None:
-                    if mod == "emg": # TODO: enable filter for each modality
+        
+        # Get raw data from shared memory
+        for item in self.shared_memory_items:
+            if "_count" not in item[0]:  # Skip count variables
+                try:
+                    print(f"Debug - Accessing {item[0]} from shared memory")  # Debug print
+                    data = self.smm.get_variable(item[0])
+                    print(f"Debug - {item[0]} shape: {data.shape}")  # Debug print
+                    
+                    # Apply filter if needed
+                    if filter and self.fi is not None and item[0] == 'emg':
                         data = self.fi.filter(data)
-            if N != 0:
-                val[mod]   = data[:N,:]
-            else:
-                val[mod]   = data[:,:]
-            if self.channel_mask is not None:
-                val[mod] = val[mod][:, self.channel_mask]
-            count[mod] = self.smm.get_variable(mod+"_count")
-        return val,count
+                    
+                    # Slice data if N is specified
+                    val[item[0]] = data[:N,:] if N != 0 else data[:,:]
+                    print(f"Debug - Final {item[0]} shape: {val[item[0]].shape}")  # Debug print
+                    
+                    count[item[0]] = self.smm.get_variable(item[0]+"_count")
+                except AssertionError:
+                    # Skip if variable doesn't exist (e.g., EMG disabled)
+                    print(f"Debug - {item[0]} not found in shared memory")  # Debug print
+                    continue
+                except Exception as e:
+                    print(f"Debug - Error accessing {item[0]}: {str(e)}")  # Debug print
+                    raise
+        
+        # Apply channel mask if needed
+        if self.channel_mask is not None and 'emg' in val:
+            val['emg'] = val['emg'][:, self.channel_mask]
+        
+        return val, count
 
     def reset(self, modality=None):
         """Reset the data within the shared memory buffer.
