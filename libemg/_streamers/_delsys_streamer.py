@@ -65,6 +65,7 @@ class DelsysEMGStreamer(Process):
 
         self.connected = False
         self.signal = Event()
+        self.recording_signal = Event()  # New: Add recording control
         self.shared_memory_items = shared_memory_items
 
         self.emg = emg
@@ -109,23 +110,37 @@ class DelsysEMGStreamer(Process):
     def add_imu_handler(self, h):
         self.imu_handlers.append(h)
 
+    def start_recording(self):
+        """Start writing data to the shared memory buffer."""
+        print("Started writing to buffer")
+        self.recording_signal.set()
+
+    def stop_recording(self):
+        """Stop writing data to the shared memory buffer."""
+        print("Stopped writing to buffer")
+        self.recording_signal.clear()
+
     def run(self):
         self.smm = SharedMemoryManager()
         for item in self.shared_memory_items:
             self.smm.create_variable(*item)
 
         def write_emg(emg):
-            # update the samples in "emg"
-            self.smm.modify_variable("emg", lambda x: np.vstack((np.flip(emg,0), x))[:x.shape[0],:])
-            # update the number of samples retrieved
-            self.smm.modify_variable("emg_count", lambda x: x + emg.shape[0])
+            # Only write to buffer if recording is active
+            if self.recording_signal.is_set():
+                # update the samples in "emg"
+                self.smm.modify_variable("emg", lambda x: np.vstack((np.flip(emg,0), x))[:x.shape[0],:])
+                # update the number of samples retrieved
+                self.smm.modify_variable("emg_count", lambda x: x + emg.shape[0])
         self.add_emg_handler(write_emg)
 
         def write_imu(imu):
-            # update the samples in "imu"
-            self.smm.modify_variable("imu", lambda x: np.vstack((np.flip(imu,0), x))[:x.shape[0],:])
-            # update the number of samples retrieved
-            self.smm.modify_variable("imu_count", lambda x: x + imu.shape[0])
+            # Only write to buffer if recording is active
+            if self.recording_signal.is_set():
+                # update the samples in "imu"
+                self.smm.modify_variable("imu", lambda x: np.vstack((np.flip(imu,0), x))[:x.shape[0],:])
+                # update the number of samples retrieved
+                self.smm.modify_variable("imu_count", lambda x: x + imu.shape[0])
             # sock.sendto(data_arr, (self.ip, self.port))
         self.add_imu_handler(write_imu)
 

@@ -561,13 +561,14 @@ class OnlineDataHandler(DataHandler):
         Mask of active channels to use online. Allows certain channels to be ignored when streaming in real-time. If None, all channels are used.
         Defaults to None.
     """
-    def __init__(self, shared_memory_items, channel_mask = None):
+    def __init__(self, shared_memory_items, streamer=None, channel_mask = None):
         self.shared_memory_items = shared_memory_items
         self.prepare_smm()
         self.log_signal = Event()
         self.visualize_signal = Event()        
         self.fi = None
         self.channel_mask = channel_mask
+        self.streamer = streamer
     
     def prepare_smm(self):
         self.modalities = []
@@ -583,16 +584,28 @@ class OnlineDataHandler(DataHandler):
                 continue
             self.modalities.append(i[0])
 
+    def start_streamer_recording(self):
+        """Start recording data from the streamer to the shared memory buffer."""
+        print("Starting streamer recording")
+        self.streamer.start_recording()
+
+    def stop_streamer_recording(self):  
+        """Stop recording data from the streamer to the shared memory buffer."""
+        print("Stopping streamer recording")
+        self.streamer.stop_recording()
+
     def stop_all(self):
         """Terminates the processes spawned by the ODH.
         """
         self.stop_log()
         self.stop_visualize()
 
-    def stop_log(self):
+
+    def stop_log(self, sleep_duration=0.5):
         self.log_signal.set()
-        time.sleep(0.5)
-        self.log_signal.clear()
+        if sleep_duration > 0:
+            time.sleep(sleep_duration)
+            self.log_signal.clear()
 
     def stop_visualize(self):
         self.visualize_signal.set()
@@ -1166,41 +1179,6 @@ class OnlineDataHandler(DataHandler):
 
     #         animation = FuncAnimation(fig, update, interval=(1000/sampling_rate * window_increment))
     #         plt.show()
-
-    # def get_data(self, N=0, filter=True):
-    #     """Grab the data in the shared memory buffer across all modalities.
- 
-    #     Parameters
-    #     ----------
-    #     N : int
-    #         Number of samples to grab from the shared memory items. If zero, grabs all data.
-    #     filter: bool
-    #         Apply the installed filters to the data prior to returning or not.
- 
-    #     Returns
-    #     ----------
-    #     val: dict
-    #         A dictionary with keys corresponding to the modalities. Each key will have a np.ndarray of data returned.
-    #     count: dict
-    #         A dictionary with keys corresponding to the modalities. Each key will have an int corresponding to the number
-    #         of samples received since the streamer began (or the last reset call).
-    #     """
-    #     val   = {}
-    #     count = {}
-    #     for mod in self.modalities:
-    #         data = self.smm.get_variable(mod)
-    #         if filter:
-    #             if self.fi is not None:
-    #                 if mod == "emg": # TODO: enable filter for each modality
-    #                     data = self.fi.filter(data)
-    #         if N != 0:
-    #             val[mod]   = data[:N,:]
-    #         else:
-    #             val[mod]   = data[:,:]
-    #         if self.channel_mask is not None:
-    #             val[mod] = val[mod][:, self.channel_mask]
-    #         count[mod] = self.smm.get_variable(mod+"_count")
-    #     return val,count
     def debug_data_shapes(self):
         """Debug method to print raw data shapes from shared memory."""
         print("\nDEBUG: Raw Data Shapes")
@@ -1211,40 +1189,75 @@ class OnlineDataHandler(DataHandler):
                 print(f"{item[0]} first few values: {data[:5] if len(data) > 0 else 'empty'}")
 
     def get_data(self, N=0, filter=True):
-        """Grab the data in the shared memory buffer across all modalities."""
-        val = {}
+        """Grab the data in the shared memory buffer across all modalities.
+ 
+        Parameters
+        ----------
+        N : int
+            Number of samples to grab from the shared memory items. If zero, grabs all data.
+        filter: bool
+            Apply the installed filters to the data prior to returning or not.
+ 
+        Returns
+        ----------
+        val: dict
+            A dictionary with keys corresponding to the modalities. Each key will have a np.ndarray of data returned.
+        count: dict
+            A dictionary with keys corresponding to the modalities. Each key will have an int corresponding to the number
+            of samples received since the streamer began (or the last reset call).
+        """
+        val   = {}
         count = {}
-        
-        # Get raw data from shared memory
-        for item in self.shared_memory_items:
-            if "_count" not in item[0]:  # Skip count variables
-                try:
-                    # print(f"Debug - Accessing {item[0]} from shared memory")  # Debug print
-                    data = self.smm.get_variable(item[0])
-                    # print(f"Debug - {item[0]} shape: {data.shape}")  # Debug print
-                    
-                    # Apply filter if needed
-                    if filter and self.fi is not None and item[0] == 'emg':
+        for mod in self.modalities:
+            data = self.smm.get_variable(mod)
+            if filter:
+                if self.fi is not None:
+                    if mod == "emg": # TODO: enable filter for each modality
                         data = self.fi.filter(data)
-                    
-                    # Slice data if N is specified
-                    val[item[0]] = data[:N,:] if N != 0 else data[:,:]
-                    # print(f"Debug - Final {item[0]} shape: {val[item[0]].shape}")  # Debug print
-                    
-                    count[item[0]] = self.smm.get_variable(item[0]+"_count")
-                except AssertionError:
-                    # Skip if variable doesn't exist (e.g., EMG disabled)
-                    print(f"Debug - {item[0]} not found in shared memory")  # Debug print
-                    continue
-                except Exception as e:
-                    print(f"Debug - Error accessing {item[0]}: {str(e)}")  # Debug print
-                    raise
+            if N != 0:
+                val[mod]   = data[:N,:]
+            else:
+                val[mod]   = data[:,:]
+            if self.channel_mask is not None:
+                val[mod] = val[mod][:, self.channel_mask]
+            count[mod] = self.smm.get_variable(mod+"_count")
+        return val,count
+    
+    # def get_data(self, N=0, filter=True):
+    #     """Grab the data in the shared memory buffer across all modalities."""
+    #     val = {}
+    #     count = {}
         
-        # Apply channel mask if needed
-        if self.channel_mask is not None and 'emg' in val:
-            val['emg'] = val['emg'][:, self.channel_mask]
+    #     # Get raw data from shared memory
+    #     for item in self.shared_memory_items:
+    #         if "_count" not in item[0]:  # Skip count variables
+    #             try:
+    #                 # print(f"Debug - Accessing {item[0]} from shared memory")  # Debug print
+    #                 data = self.smm.get_variable(item[0])
+    #                 # print(f"Debug - {item[0]} shape: {data.shape}")  # Debug print
+                    
+    #                 # Apply filter if needed
+    #                 if filter and self.fi is not None and item[0] == 'emg':
+    #                     data = self.fi.filter(data)
+                    
+    #                 # Slice data if N is specified
+    #                 val[item[0]] = data[:N,:] if N != 0 else data[:,:]
+    #                 # print(f"Debug - Final {item[0]} shape: {val[item[0]].shape}")  # Debug print
+                    
+    #                 count[item[0]] = self.smm.get_variable(item[0]+"_count")
+    #             except AssertionError:
+    #                 # Skip if variable doesn't exist (e.g., EMG disabled)
+    #                 print(f"Debug - {item[0]} not found in shared memory")  # Debug print
+    #                 continue
+    #             except Exception as e:
+    #                 print(f"Debug - Error accessing {item[0]}: {str(e)}")  # Debug print
+    #                 raise
         
-        return val, count
+    #     # Apply channel mask if needed
+    #     if self.channel_mask is not None and 'emg' in val:
+    #         val['emg'] = val['emg'][:, self.channel_mask]
+        
+    #     return val, count
 
     def reset(self, modality=None):
         """Reset the data within the shared memory buffer.
@@ -1277,6 +1290,7 @@ class OnlineDataHandler(DataHandler):
         print("ODH->log_to_file begin.")
         self.file_path = file_path
         self.timestamps = timestamps
+        self.log_signal.clear()
         if block:
             self._log_to_file()
             print("ODH->log_to_file ended.")
@@ -1299,9 +1313,9 @@ class OnlineDataHandler(DataHandler):
             timestamp = time.time()
             vals, counts = self.get_data(N=0, filter=False)
             for m in vals.keys():
-                new_count       = counts[m][0,0]
+                new_count = counts[m][0,0]
                 num_new_samples = new_count - last_count[m]
-                new_samples     = vals[m][:num_new_samples,:]
+                new_samples = vals[m][:num_new_samples,:]
                 last_count[m] = new_count
                 if num_new_samples:
                     if not m in files.keys():
