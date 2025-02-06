@@ -4,6 +4,8 @@ import numpy as np
 import pickle
 from libemg.shared_memory_manager import SharedMemoryManager
 from multiprocessing import Process, Event, Lock
+import threading
+from queue import Queue
 
 class DelsysEMGStreamer(Process):
     """
@@ -61,11 +63,11 @@ class DelsysEMGStreamer(Process):
         """
         Note: data_port 50043 refers to the current port that EMG data is being streamed to. For older devices, the EMG data_port may be 50041 (e.g., the Delsys Trigno)
         """
-        Process.__init__(self, daemon=True)
+        Process.__init__(self)
 
         self.connected = False
         self.signal = Event()
-        self.recording_signal = Event()  # New: Add recording control
+        self.recording_signal = Event()
         self.shared_memory_items = shared_memory_items
 
         self.emg = emg
@@ -85,9 +87,15 @@ class DelsysEMGStreamer(Process):
         self._min_recv_size = 16 * self.BYTES_PER_CHANNEL
         self._min_recv_size_aux = 144 * self.BYTES_PER_CHANNEL
 
+        # Initialize these in run()
+        self.stop_threads = False
+        self._comm_socket = None
+        self._data_socket = None
+        self._aux_socket = None
+        self.smm = None
+
     def connect(self):
         # create command socket and consume the servers initial response
-
         self._comm_socket = socket.create_connection(
             (self.host, self.cmd_port), self.timeout)
         self._comm_socket.recv(1024)
@@ -103,6 +111,7 @@ class DelsysEMGStreamer(Process):
         self._aux_socket.setblocking(1)
 
         self._send_cmd('START')
+        self.connected = True
 
     def add_emg_handler(self, h):
         self.emg_handlers.append(h)
@@ -120,75 +129,114 @@ class DelsysEMGStreamer(Process):
         print("Stopped writing to buffer")
         self.recording_signal.clear()
 
+    def _emg_stream(self):
+        """Thread function to handle EMG data"""
+        while not self.stop_threads and self.connected:
+            try:
+                packet = self._data_socket.recv(self._min_recv_size)
+                data = np.asarray(struct.unpack('<'+'f'*16, packet))
+                data = data[self.channel_list]
+                if len(data.shape)==1:
+                    data = data[None, :]
+                for e in self.emg_handlers:
+                    e(data)
+            except Exception as e:
+                print(f"EMG Stream Error: {str(e)}")
+                continue
+
+    def _imu_stream(self):
+        """Thread function to handle IMU data"""
+        while not self.stop_threads and self.connected:
+            try:
+                packet = self._aux_socket.recv(self._min_recv_size_aux)
+                data = np.asarray(struct.unpack('<'+'f'*144, packet))
+                data = data[self.aux_channel_list]
+                if len(data.shape)==1:
+                    data = data[None, :]
+                for i in self.imu_handlers:
+                    i(data)
+            except Exception as e:
+                print(f"IMU Stream Error: {str(e)}")
+                continue
+
     def run(self):
+        # Initialize shared memory manager
         self.smm = SharedMemoryManager()
         for item in self.shared_memory_items:
             self.smm.create_variable(*item)
 
+        # Set up handlers for shared memory
         def write_emg(emg):
-            # Only write to buffer if recording is active
             if self.recording_signal.is_set():
-                # update the samples in "emg"
                 self.smm.modify_variable("emg", lambda x: np.vstack((np.flip(emg,0), x))[:x.shape[0],:])
-                # update the number of samples retrieved
                 self.smm.modify_variable("emg_count", lambda x: x + emg.shape[0])
         self.add_emg_handler(write_emg)
 
         def write_imu(imu):
-            # Only write to buffer if recording is active
             if self.recording_signal.is_set():
-                # update the samples in "imu"
                 self.smm.modify_variable("imu", lambda x: np.vstack((np.flip(imu,0), x))[:x.shape[0],:])
-                # update the number of samples retrieved
                 self.smm.modify_variable("imu_count", lambda x: x + imu.shape[0])
-            # sock.sendto(data_arr, (self.ip, self.port))
         self.add_imu_handler(write_imu)
 
-        self.connect()
-
-        while True:
-            try:
-                if self.emg:
-                    packet = self._data_socket.recv(self._min_recv_size)
-                    data = np.asarray(struct.unpack('<'+'f'*16, packet))
-                    data = data[self.channel_list]
-                    if len(data.shape)==1:
-                        data = data[None, :]
-                    for e in self.emg_handlers:
-                        e(data)
-                if self.imu:
-                    packet = self._aux_socket.recv(self._min_recv_size_aux)
-                    data = np.asarray(struct.unpack('<'+'f'*144, packet))
-                    # assert np.any(data!=0), "IMU not currently working"
-                    data = data[self.aux_channel_list]
-                    if len(data.shape)==1:
-                        data = data[None, :]
-                    for i in self.imu_handlers:
-                        i(data)
-                A = 1
-
-            except Exception as e:
-                print("Error Occurred: " + str(e))
-                continue
-
-            if self.signal.is_set():
-                self.cleanup()
-                break
-        print("LibEMG -> DelsysStreamer (process ended).")
-        
-    def cleanup(self):
-        self._send_cmd('STOP')
-        print("LibEMG -> DelsysStreamer (streaming stopped).")
-        self._comm_socket.close()
-        print("LibEMG -> DelsysStreamer (comm socket closed).")
-        
-
-    
-    def __del__(self):
+        # Connect to device
         try:
-            self._comm_socket.close()
-        except:
-            pass
+            self.connect()
+        except Exception as e:
+            print(f"Connection failed: {str(e)}")
+            return
+
+        # Create and start threads
+        threads = []
+        if self.emg:
+            emg_thread = threading.Thread(target=self._emg_stream)
+            emg_thread.daemon = True
+            threads.append(emg_thread)
+            emg_thread.start()
+            
+        if self.imu:
+            imu_thread = threading.Thread(target=self._imu_stream)
+            imu_thread.daemon = True
+            threads.append(imu_thread)
+            imu_thread.start()
+
+        # Main process loop
+        while not self.signal.is_set():
+            if not self.connected:
+                break
+            threading.Event().wait(0.1)  # Small sleep to prevent CPU hogging
+
+        # Cleanup
+        self.stop_threads = True
+        self.connected = False
+        for thread in threads:
+            thread.join(timeout=1.0)
+        self.cleanup()
+        print("LibEMG -> DelsysStreamer (process ended).")
+
+    def cleanup(self):
+        if self._comm_socket:
+            try:
+                self._send_cmd('STOP')
+                print("LibEMG -> DelsysStreamer (streaming stopped).")
+                self._comm_socket.close()
+                print("LibEMG -> DelsysStreamer (comm socket closed).")
+            except:
+                pass
+        
+        if self._data_socket:
+            try:
+                self._data_socket.close()
+            except:
+                pass
+            
+        if self._aux_socket:
+            try:
+                self._aux_socket.close()
+            except:
+                pass
+
+    def __del__(self):
+        self.cleanup()
 
     def _send_cmd(self, command):
         self._comm_socket.send(self._cmd(command))
