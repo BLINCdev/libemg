@@ -79,8 +79,16 @@ class FullReachableWorkspace(Dataset):
 			if self.oitmr:
 				# only use the classes of interest for our OI TMR control study experiment
 					classes_values = ['00', '01', '02', '04', '05', '13', '14'] # ignore the transition to neutral classes
+					class_mapping = {0: "Neutral", 
+									 1: "Elbow Flexion", 
+									 2: "Elbow Extension", 
+									 3: "Pronation", 
+									 4: "Supination", 
+									 5: "Hand Close", 
+									 6: "Hand Open"}
 					print(f"Using only classes relevant to the BLINC lab OI TMR control study:")
 					print(f"\tNeutral, elbow flexion, elbow extension, pronation, supination, hand close, and hand open")
+					print(f"\tClass label mapping: {class_mapping}")
 			else:
 				if self.neutral_transitions:
 					classes_values = [f"{i:02}" for i in range(15)] # classes 0 - 14

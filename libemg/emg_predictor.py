@@ -51,7 +51,7 @@ class EMGPredictor:
         self.feature_params = {}
         self.fix_feature_errors = fix_feature_errors
         self.silent = silent
-        print(f"EMGPredictor: setting random seed {random_seed}")
+        # print(f"EMGPredictor: setting random seed {random_seed}")
         random.seed(random_seed)
 
     def fit(self, feature_dictionary = None, dataloader_dictionary = None, training_parameters = None):
