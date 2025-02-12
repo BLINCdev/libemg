@@ -49,3 +49,13 @@ resources/
 __pycache__/    # This ignores the pycache directory
 *.py[cod]       # This ignores .pyc, .pyo, and .pyd files
 *$py.class      # This ignores Python class files
+# CPython files
+*.c
+*.cpp
+*.so
+*.pyd
+build/
+*.pyc
+__pycache__/
+*.cpython-*
+libemg/_datasets/__pycache__/full_reachable_workspace.cpython-311.pyc
