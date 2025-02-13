@@ -594,6 +594,12 @@ class OnlineDataHandler(DataHandler):
         print("Stopping streamer recording")
         self.streamer.stop_recording()
 
+    def stop_streamer_processes(self):
+        print("Stopping all streamer processes. Need for Delsys changes.")
+        self.streamer.stop_threads = True
+        self.streamer.connected = False
+        self.streamer.cleanup()
+
     def stop_all(self):
         """Terminates the processes spawned by the ODH.
         """

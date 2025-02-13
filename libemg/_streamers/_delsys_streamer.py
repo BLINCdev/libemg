@@ -142,6 +142,9 @@ class DelsysEMGStreamer(Process):
                     e(data)
             except Exception as e:
                 print(f"EMG Stream Error: {str(e)}")
+                if "timed out" in str(e): # Check if the exception is a timeout
+                    self.connected = False # Update connection status
+                    break # Break out of loop
                 continue
 
     def _imu_stream(self):
@@ -157,6 +160,9 @@ class DelsysEMGStreamer(Process):
                     i(data)
             except Exception as e:
                 print(f"IMU Stream Error: {str(e)}")
+                if "timed out" in str(e): # Check if the exception is a timeout
+                    self.connected = False # Update connection status
+                    break # Break out of loop
                 continue
 
     def run(self):
@@ -189,13 +195,13 @@ class DelsysEMGStreamer(Process):
         threads = []
         if self.emg:
             emg_thread = threading.Thread(target=self._emg_stream)
-            emg_thread.daemon = True
+            emg_thread.daemon = False
             threads.append(emg_thread)
             emg_thread.start()
             
         if self.imu:
             imu_thread = threading.Thread(target=self._imu_stream)
-            imu_thread.daemon = True
+            imu_thread.daemon = False
             threads.append(imu_thread)
             imu_thread.start()
 
@@ -203,13 +209,20 @@ class DelsysEMGStreamer(Process):
         while not self.signal.is_set():
             if not self.connected:
                 break
+            # TODO: Laura fix, threads not shutting down properly when we want them too. Stuck at line 213
             threading.Event().wait(0.1)  # Small sleep to prevent CPU hogging
 
         # Cleanup
+        print("Reached cleanup")
         self.stop_threads = True
         self.connected = False
         for thread in threads:
-            thread.join(timeout=1.0)
+            thread.join(timeout=5.0)
+       # Check if threads timed out 
+        for thread in threads:
+            if thread.is_alive():
+                print(f"WARNING: Thread {thread.name} did not terminate gracefully.")
+
         self.cleanup()
         print("LibEMG -> DelsysStreamer (process ended).")
 
@@ -221,7 +234,7 @@ class DelsysEMGStreamer(Process):
                 self._comm_socket.close()
                 print("LibEMG -> DelsysStreamer (comm socket closed).")
             except:
-                pass
+                print(f"Error sending STOP command: {e}")
         
         if self._data_socket:
             try:

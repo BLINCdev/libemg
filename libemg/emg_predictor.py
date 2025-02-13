@@ -25,6 +25,7 @@ from scipy import stats
 import csv
 from abc import ABC, abstractmethod
 import re
+import keyboard  # For detecting key presses
 
 from libemg.utils import get_windows
 
@@ -269,7 +270,6 @@ class EMGClassifier(EMGPredictor):
             
         # Default
         predictions, probabilities = self._prediction_helper(prob_predictions)
-
         # Rejection
         if self.rejection:
             predictions = np.array([self._rejection_helper(predictions[i], probabilities[i]) for i in range(0,len(predictions))])
@@ -736,9 +736,13 @@ class OnlineStreamer(ABC):
             self.options["smm"].modify_variable("adapt_flag", lambda x: -1)
         
         self.odh.prepare_smm()
-
-        
-        self.expected_count = {mod:self.window_size for mod in self.odh.modalities}
+        # TODO: Laura add IMU support here
+        print("modalities:")
+        print(self.odh.modalities)
+        # self.expected_count = {mod:self.window_size for mod in self.odh.modalities}
+        self.expected_count = {'emg': 222}
+        print("expected count:")
+        print(self.expected_count)
         # todo: deal with different sampling frequencies for different modalities
         self.odh.reset()
         
@@ -754,18 +758,25 @@ class OnlineStreamer(ABC):
                     self.options["smm"].modify_variable("adapt_flag", lambda x: -1)
 
             val, count = self.odh.get_data(N=self.window_size)
-            modality_ready = [count[mod] > self.expected_count[mod] for mod in self.odh.modalities]
+            # TODO: Laura add IMU support here
+            modalities = ['emg']
+            # modality_ready = [count[mod] > self.expected_count[mod] for mod in self.odh.modalities]
+            modality_ready = [count[mod] > self.expected_count[mod] for mod in modalities]
 
             if all(modality_ready):
                 data, count = self._get_data_helper()
 
                 # Extract window and predict sample
-                window = {mod:get_windows(data[mod], self.window_size, self.window_increment) for mod in self.odh.modalities}
+                # TODO: Laura add back in IMU support
+                # window = {mod:get_windows(data[mod], self.window_size, self.window_increment) for mod in self.odh.modalities}
+                window = {mod:get_windows(data[mod], self.window_size, self.window_increment) for mod in modalities}
 
                 # Dealing with the case for CNNs when no features are used
                 if self.features is not None:
                     model_input = None
-                    for mod in self.odh.modalities:
+                    # TODO: Laura fix IMU support
+                    # for mod in self.odh.modalities:
+                    for mod in modalities:
                         # todo: features for each modality can be different
                         mod_features = fe.extract_features(self.features, window[mod], array=True)
                         if model_input is None:
@@ -790,10 +801,18 @@ class OnlineStreamer(ABC):
                 else:
                     model_input = window[list(window.keys())[0]] #TODO: Change this
                 
-                for mod in self.odh.modalities:
+                # TODO: Laura fix me IMU support
+                # for mod in self.odh.modalities:
+                for mod in modalities:
                     self.expected_count[mod] += self.window_increment 
                 
                 self.write_output(model_input, window)
+            
+            # Check for user input (e.g., the 'q' key) without blocking
+            if keyboard.is_pressed('q'):  # Check if 'q' is pressed
+                print("User pressed 'q'. Exiting real time prediction loop.")
+                break  
+
 
     def install_standardization(self, standardization: np.ndarray | StandardScaler):
         """Install standardization to online model. Standardizes each feature based on training data (i.e., standardizes across windows).
@@ -900,6 +919,7 @@ class OnlineEMGClassifier(OnlineStreamer):
             If True, the run function blocks the main thread. Otherwise it runs in a 
             seperate process.
         """
+        print("starting stream boop")
         self.start_stream(block)
 
     def stop_running(self):
