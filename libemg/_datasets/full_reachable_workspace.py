@@ -1,6 +1,7 @@
 from libemg._datasets.dataset import Dataset
 from libemg.data_handler import OfflineDataHandler, RegexFilter
 import os
+from pathlib import Path
 
 class FullReachableWorkspace(Dataset):
 	"""Biologically-inspired transhumeral targeted muscle reinnervation dataset with data gathered in limb positions covering the
@@ -58,10 +59,27 @@ class FullReachableWorkspace(Dataset):
 					 classes_values = None):
 
 		print('\nPlease cite: ' + self.citation+'\n')
-		if (not self.check_exists(self.dataset_folder)):
-			# self.download(self.url, self.dataset_folder)
-			print("Please contact Laura Petrich about getting the Full Reachable Workspace Dataset: laurapetrich@ualberta.ca") 
-			return 
+		
+		# Check multiple possible locations for the dataset
+		possible_locations = [
+			Path.home() / "Repositories" / "blinc-dev" / "oi-tmr-experiment" / self.dataset_folder,  # Default libemg location
+			Path.cwd() / self.dataset_folder,  # Current working directory
+			Path(__file__).parent.parent.parent.parent / self.dataset_folder  # Project root directory
+		]
+		
+		dataset_path = None
+		for location in possible_locations:
+			if location.exists():
+				dataset_path = location
+				print(f"Found dataset at: {dataset_path}")
+				break
+				
+		if dataset_path is None:
+			print("Dataset not found in any of these locations:")
+			for loc in possible_locations:
+				print(f"  - {loc}")
+			print("\nPlease contact Laura Petrich about getting the Full Reachable Workspace Dataset: laurapetrich@ualberta.ca")
+			return None
 
 		if subjects_values is None:
 			subjects_values = [f"{i:02}" for i in range(1, self.num_subjects + 1)]
@@ -122,7 +140,7 @@ class FullReachableWorkspace(Dataset):
 			print(f"Extracting data for UNBRACED arm")
 			data_columns = [i for i in range(8, 15)]
 
-		odh.get_data(folder_location=self.dataset_folder, regex_filters=regex_filters, delimiter=",", skiprows=1, data_column=data_columns, sort_files=True)
+		odh.get_data(folder_location=str(dataset_path), regex_filters=regex_filters, delimiter=",", skiprows=1, data_column=data_columns, sort_files=True)
 		# odh.get_data(folder_location=self.dataset_folder, regex_filters=regex_filters, delimiter=",", skiprows=1, data_column=data_columns, sort_files=False)
 		
 		if self.training_limb_positions == 1:
