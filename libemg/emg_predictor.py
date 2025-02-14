@@ -90,31 +90,6 @@ class EMGPredictor:
         else:
             raise ValueError("Incorrect combination of values passed to fit method. A feature dictionary is needed for statistical models and a dataloader dictionary is needed for deep models.")
 
-    @classmethod
-    def from_file(self, filename):
-        """Loads a classifier - rather than creates a new one.
-
-        After saving a statistical model, you can recreate it by running EMGClassifier.from_file(). By default 
-        this function loads a previously saved and pickled classifier. 
-
-        Parameters
-        ----------
-        filename: string
-            The file path of the pickled model. 
-
-        Returns
-        ----------
-        EMGClassifier
-            Returns an EMGClassifier object.
-
-        Examples
-        -----------
-        >>> classifier = EMGClassifier.from_file('lda.pickle')
-        """
-        with open(filename, 'rb') as f:
-            model = pickle.load(f)
-        return model
-
     def _predict(self, data):
         try:
             return self.model.predict(data)
@@ -127,22 +102,12 @@ class EMGPredictor:
         except AttributeError as e:
             raise AttributeError("Attempted to perform prediction when model doesn't have a predict_proba() method. Please ensure model has a valid predict_proba() method.") from e
 
-    # def save(self, filename):
-    #     """Saves (pickles) the EMGClassifier object to a file.
-
-    #     Use this save function if you want to load the object later using the from_file function. Note that 
-    #     this currently only support statistical models (i.e., not deep learning).
-
-    #     Parameters
-    #     ----------
-    #     filename: string
-    #         The path of the outputted pickled file. 
-    #     """
-    #     with open(filename, 'wb') as f:
-    #         pickle.dump(self, f)
     def save(self, filename, method='joblib'):
-        """Saves the EMGPredictor object using joblib or dill.
+        """Saves the EMGPredictor object using joblib or dill or pickle.
         
+        Use this save function if you want to load the object later using the from_file function. Note that 
+        joblib is set to default and recommended for most use cases (especially machine learning models).
+
         Parameters
         ----------
         filename: string
@@ -158,11 +123,14 @@ class EMGPredictor:
         elif method == 'dill':
             with open(f"{filename}.dill", 'wb') as f:
                 dill.dump(self, f)
+        elif method == 'pickle':
+            with open(f"{filename}.pkl", 'wb') as f:
+                pickle.dump(self, f)
         else:
-            raise ValueError("Method must be either 'joblib' or 'dill'")
+            raise ValueError("Method must be either 'joblib' or 'dill' or 'pickle'")
     
     @classmethod
-    def load(cls, filename, method='joblib'):
+    def from_file(self, filename, method='joblib'):
         """Loads a classifier from a saved file.
         
         Parameters
@@ -170,7 +138,7 @@ class EMGPredictor:
         filename: string
             Path to the saved model file (without extension)
         method: string
-            Loading method to use ('joblib' or 'dill')
+            Loading method to use ('joblib' or 'dill' or 'pickle')  
             
         Returns
         ----------
@@ -182,8 +150,11 @@ class EMGPredictor:
         elif method == 'dill':
             with open(f"{filename}.dill", 'rb') as f:
                 return dill.load(f)
+        elif method == 'pickle':
+            with open(f"{filename}.pkl", 'rb') as f:
+                return pickle.load(f)
         else:
-            raise ValueError("Method must be either 'joblib' or 'dill'")
+            raise ValueError("Method must be either 'joblib' or 'dill' or 'pickle'")
 
     def install_feature_parameters(self, feature_params):
         """Installs the feature parameters for the classifier.
