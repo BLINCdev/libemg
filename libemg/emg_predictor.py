@@ -21,6 +21,9 @@ import matplotlib.lines as mlines
 import matplotlib.patches as mpatches
 import time
 import inspect
+import joblib
+import dill
+from pathlib import Path
 from scipy import stats
 import csv
 from abc import ABC, abstractmethod
@@ -124,19 +127,63 @@ class EMGPredictor:
         except AttributeError as e:
             raise AttributeError("Attempted to perform prediction when model doesn't have a predict_proba() method. Please ensure model has a valid predict_proba() method.") from e
 
-    def save(self, filename):
-        """Saves (pickles) the EMGClassifier object to a file.
+    # def save(self, filename):
+    #     """Saves (pickles) the EMGClassifier object to a file.
 
-        Use this save function if you want to load the object later using the from_file function. Note that 
-        this currently only support statistical models (i.e., not deep learning).
+    #     Use this save function if you want to load the object later using the from_file function. Note that 
+    #     this currently only support statistical models (i.e., not deep learning).
 
+    #     Parameters
+    #     ----------
+    #     filename: string
+    #         The path of the outputted pickled file. 
+    #     """
+    #     with open(filename, 'wb') as f:
+    #         pickle.dump(self, f)
+    def save(self, filename, method='joblib'):
+        """Saves the EMGPredictor object using joblib or dill.
+        
         Parameters
         ----------
         filename: string
-            The path of the outputted pickled file. 
+            Path for the saved model file (without extension)
+        method: string
+            Saving method to use ('joblib' or 'dill')
         """
-        with open(filename, 'wb') as f:
-            pickle.dump(self, f)
+        # Create directory if it doesn't exist
+        Path(filename).parent.mkdir(parents=True, exist_ok=True)
+        
+        if method == 'joblib':
+            joblib.dump(self, f"{filename}.joblib")
+        elif method == 'dill':
+            with open(f"{filename}.dill", 'wb') as f:
+                dill.dump(self, f)
+        else:
+            raise ValueError("Method must be either 'joblib' or 'dill'")
+    
+    @classmethod
+    def load(cls, filename, method='joblib'):
+        """Loads a classifier from a saved file.
+        
+        Parameters
+        ----------
+        filename: string
+            Path to the saved model file (without extension)
+        method: string
+            Loading method to use ('joblib' or 'dill')
+            
+        Returns
+        ----------
+        EMGPredictor
+            Returns an EMGPredictor object
+        """
+        if method == 'joblib':
+            return joblib.load(f"{filename}.joblib")
+        elif method == 'dill':
+            with open(f"{filename}.dill", 'rb') as f:
+                return dill.load(f)
+        else:
+            raise ValueError("Method must be either 'joblib' or 'dill'")
 
     def install_feature_parameters(self, feature_params):
         """Installs the feature parameters for the classifier.
