@@ -49,3 +49,4 @@ resources/
 __pycache__/    # This ignores the pycache directory
 *.py[cod]       # This ignores .pyc, .pyo, and .pyd files
 *$py.class      # This ignores Python class files
+*.pyc

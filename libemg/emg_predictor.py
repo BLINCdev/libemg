@@ -390,6 +390,7 @@ class EMGClassifier(EMGPredictor):
                 velocity_metric = self.velocity_metric_handle(window[mod])
             
             velocity_output = (velocity_metric - self.th_min_dic[c])/(self.th_max_dic[c] - self.th_min_dic[c])
+            print(velocity_output)
             if self.velocity_mapping_handle:
                 velocity_output = self.velocity_mapping_handle(velocity_output)
             return '{0:.2f}'.format(min([1, max([velocity_output, 0])]))
@@ -963,13 +964,13 @@ class OnlineEMGClassifier(OnlineStreamer):
             prediction = values[np.argmax(counts)]
         
         # Check for velocity based control
-        calculated_velocity = ""
+        # calculated_velocity = ""
+        calculated_velocity = " 1.00"
         if self.predictor.velocity:
             calculated_velocity = " 0"
             # Dont check if rejected 
             if prediction >= 0:
                 calculated_velocity = " " + str(self.predictor._get_velocity(window, prediction))
-
 
         time_stamp = time.time()
         if calculated_velocity == "":
