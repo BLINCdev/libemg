@@ -1,11 +1,9 @@
 import socket
+import selectors
 import struct
 import numpy as np
-import pickle
 from libemg.shared_memory_manager import SharedMemoryManager
-from multiprocessing import Process, Event, Lock
-import threading
-from queue import Queue
+from multiprocessing import Process, Event
 
 class DelsysEMGStreamer(Process):
     """
@@ -55,10 +53,10 @@ class DelsysEMGStreamer(Process):
                  emg=True,
                  imu=False,
                  recv_ip:               str = 'localhost', 
-                 cmd_port:              str = 50040, 
-                 data_port:             str = 50043, 
-                 aux_port:              str = 50044,
-                 channel_list:        str = list(range(8)), 
+                 cmd_port:              int = 50040,
+                 data_port:             int = 50043,
+                 aux_port:              int = 50044,
+                 channel_list:          list[int] = list(range(8)),
                  timeout:               int = 10):
         """
         Note: data_port 50043 refers to the current port that EMG data is being streamed to. For older devices, the EMG data_port may be 50041 (e.g., the Delsys Trigno)
@@ -88,7 +86,6 @@ class DelsysEMGStreamer(Process):
         self._min_recv_size_aux = 144 * self.BYTES_PER_CHANNEL
 
         # Initialize these in run()
-        self.stop_threads = False
         self._comm_socket = None
         self._data_socket = None
         self._aux_socket = None
@@ -103,12 +100,12 @@ class DelsysEMGStreamer(Process):
         # create the data socket
         self._data_socket = socket.create_connection(
             (self.host, self.data_port), self.timeout)
-        self._data_socket.setblocking(1)
+        self._data_socket.setblocking(False)
 
         # create the aux data socket
         self._aux_socket = socket.create_connection(
             (self.host, self.aux_port), self.timeout)
-        self._aux_socket.setblocking(1)
+        self._aux_socket.setblocking(False)
 
         self._send_cmd('START')
         self.connected = True
@@ -131,39 +128,36 @@ class DelsysEMGStreamer(Process):
 
     def _emg_stream(self):
         """Thread function to handle EMG data"""
-        while not self.stop_threads and self.connected:
-            try:
-                packet = self._data_socket.recv(self._min_recv_size)
-                data = np.asarray(struct.unpack('<'+'f'*16, packet))
-                data = data[self.channel_list]
-                if len(data.shape)==1:
-                    data = data[None, :]
-                for e in self.emg_handlers:
-                    e(data)
-            except Exception as e:
-                print(f"EMG Stream Error: {str(e)}")
-                if "timed out" in str(e): # Check if the exception is a timeout
-                    self.connected = False # Update connection status
-                    break # Break out of loop
-                continue
+        try:
+            packet = self._data_socket.recv(self._min_recv_size)
+            data = np.asarray(struct.unpack('<'+'f'*16, packet))
+            data = data[self.channel_list]
+            if len(data.shape)==1:
+                data = data[None, :]
+            for e in self.emg_handlers:
+                e(data)
+        except Exception as e:
+            print(f"EMG Stream Error: {str(e)}")
+            if "timed out" in str(e): # Check if the exception is a timeout
+                self.connected = False
+                return
+
 
     def _imu_stream(self):
         """Thread function to handle IMU data"""
-        while not self.stop_threads and self.connected:
-            try:
-                packet = self._aux_socket.recv(self._min_recv_size_aux)
-                data = np.asarray(struct.unpack('<'+'f'*144, packet))
-                data = data[self.aux_channel_list]
-                if len(data.shape)==1:
-                    data = data[None, :]
-                for i in self.imu_handlers:
-                    i(data)
-            except Exception as e:
-                print(f"IMU Stream Error: {str(e)}")
-                if "timed out" in str(e): # Check if the exception is a timeout
-                    self.connected = False # Update connection status
-                    break # Break out of loop
-                continue
+        try:
+            packet = self._aux_socket.recv(self._min_recv_size_aux)
+            data = np.asarray(struct.unpack('<'+'f'*144, packet))
+            data = data[self.aux_channel_list]
+            if len(data.shape)==1:
+                data = data[None, :]
+            for i in self.imu_handlers:
+                i(data)
+        except Exception as e:
+            print(f"IMU Stream Error: {str(e)}")
+            if "timed out" in str(e): # Check if the exception is a timeout
+                self.connected = False
+                return
 
     def run(self):
         # Initialize shared memory manager
@@ -191,37 +185,35 @@ class DelsysEMGStreamer(Process):
             print(f"Connection failed: {str(e)}")
             return
 
-        # Create and start threads
-        threads = []
-        if self.emg:
-            emg_thread = threading.Thread(target=self._emg_stream)
-            emg_thread.daemon = False
-            threads.append(emg_thread)
-            emg_thread.start()
-            
-        if self.imu:
-            imu_thread = threading.Thread(target=self._imu_stream)
-            imu_thread.daemon = False
-            threads.append(imu_thread)
-            imu_thread.start()
+        sel = selectors.DefaultSelector()
+        emg_key: str = "EMG"
+        aux_key: str = "AUX"
+        sel.register(self._data_socket, selectors.EVENT_READ, data=emg_key)
+        sel.register(self._aux_socket, selectors.EVENT_READ, data=aux_key)
 
         # Main process loop
         while not self.signal.is_set():
-            if not self.connected:
-                break
-            # TODO: Laura fix, threads not shutting down properly when we want them too. Stuck at line 213
-            threading.Event().wait(0.1)  # Small sleep to prevent CPU hogging
+            events = sel.select()
+            for key, mask in events:
+                # The main expected terminator of the reading loop is the lock-backed signal, but internally, the
+                # stream reading methods try-catch stream errors and ask for the loop to be terminated to handle, e.g.,
+                # unexpected server termination. In these cases, we want to be able to bail out early.
+                if not self.connected:
+                    break
+
+                event_key: str = key.data
+
+                if event_key == emg_key:
+                    self._emg_stream()
+                elif event_key == aux_key:
+                    self._imu_stream()
+                else:
+                    # Should be unreachable.
+                    raise ValueError(f"Unknown selector key: {event_key}")
 
         # Cleanup
         print("Reached cleanup")
-        self.stop_threads = True
         self.connected = False
-        for thread in threads:
-            thread.join(timeout=5.0)
-       # Check if threads timed out 
-        for thread in threads:
-            if thread.is_alive():
-                print(f"WARNING: Thread {thread.name} did not terminate gracefully.")
 
         self.cleanup()
         print("LibEMG -> DelsysStreamer (process ended).")
@@ -233,18 +225,21 @@ class DelsysEMGStreamer(Process):
                 print("LibEMG -> DelsysStreamer (streaming stopped).")
                 self._comm_socket.close()
                 print("LibEMG -> DelsysStreamer (comm socket closed).")
-            except:
+                self._comm_socket = None
+            except Exception as e:
                 print(f"Error sending STOP command: {e}")
         
         if self._data_socket:
             try:
                 self._data_socket.close()
+                self._data_socket = None
             except:
                 pass
             
         if self._aux_socket:
             try:
                 self._aux_socket.close()
+                self._aux_socket = None
             except:
                 pass
 
