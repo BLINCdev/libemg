@@ -757,10 +757,12 @@ class OnlineStreamer(ABC):
         
         self.odh.prepare_smm()
         # TODO: Laura add IMU support here
-        print("modalities:")
-        print(self.odh.modalities)
+        # print("modalities:")
+        # print(self.odh.modalities)
+        modalities = ['emg']
         # self.expected_count = {mod:self.window_size for mod in self.odh.modalities}
-        self.expected_count = {'emg': 222}
+        self.expected_count = {mod:self.window_size for mod in modalities}
+        # self.expected_count = {'emg': 222}
         print("expected count:")
         print(self.expected_count)
         # todo: deal with different sampling frequencies for different modalities
@@ -779,7 +781,6 @@ class OnlineStreamer(ABC):
 
             val, count = self.odh.get_data(N=self.window_size)
             # TODO: Laura add IMU support here
-            modalities = ['emg']
             # modality_ready = [count[mod] > self.expected_count[mod] for mod in self.odh.modalities]
             modality_ready = [count[mod] > self.expected_count[mod] for mod in modalities]
 

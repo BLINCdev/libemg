@@ -33,7 +33,7 @@ class FullReachableWorkspace(Dataset):
 
 	def __init__(self, dataset_folder="FullReachableWorkspace", braced=False, training_limb_positions=0, train_participants=[], test_participants=[], neutral_transitions=False, oitmr=False):
 		Dataset.__init__(self, 
-						1111, # sampling rate
+						2000, # sampling rate
 						7, # number of sensors (note we are using only data from the unbraced arm, set braced=True to use braced arm data)
 						'Delsys',
 						16, # number of participants
