@@ -952,7 +952,9 @@ class OnlineEMGClassifier(OnlineStreamer):
         # Make prediction
         probabilities = self.predictor.model.predict_proba(model_input)
         prediction, probability = self.predictor._prediction_helper(probabilities)
-        # print(probabilities)
+
+        # print(f"Input: {model_input}; Probabilities: {probabilities}")
+
         prediction = prediction[0]
 
         # Check for rejection
