@@ -155,7 +155,7 @@ class FeatureExtractor:
         """
         features = {}
         for feature in feature_list:
-            print(f"Extracting feature: {feature}")
+            # print(f"Extracting feature: {feature}")
             if feature in self.get_feature_list():
                 method_to_call = getattr(self, 'get' + feature + 'feat')
                 valid_keys = [i for i in list(feature_dic.keys()) if feature+"_" in i]
@@ -723,7 +723,7 @@ class FeatureExtractor:
             The computed features associated with each window. 
         """
         assert type(AR_order) == int
-        print(f"AR order set to integer {AR_order}")
+        # print(f"AR order set to integer {AR_order}")
         feature = np.reshape(lpc(windows, order=AR_order,axis=2)[:,:,1:],(windows.shape[0],AR_order*windows.shape[1]),order="C")
         return feature
 
