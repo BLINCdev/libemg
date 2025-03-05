@@ -946,7 +946,7 @@ class OnlineEMGClassifier(OnlineStreamer):
     def stop_running(self):
         """Kills the process streaming classification decisions.
         """
-        if self.process != None:
+        if self.process.is_alive():
             self.process.terminate()
 
     def write_output(self, model_input, window):
