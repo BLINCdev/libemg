@@ -267,7 +267,7 @@ class EMGClassifier(EMGPredictor):
 
 
         
-    def run(self, test_data):
+    def run(self, test_data, rej_value=-1):
         """Runs the classifier on a pre-defined set of training data.
 
         Parameters
@@ -290,9 +290,10 @@ class EMGClassifier(EMGPredictor):
         predictions, probabilities = self._prediction_helper(prob_predictions)
         # Rejection
         if self.rejection:
-            predictions = np.array([self._rejection_helper(predictions[i], probabilities[i]) for i in range(0,len(predictions))])
+            predictions = np.array([self._rejection_helper(predictions[i], probabilities[i], rej_value=rej_value) for i in range(0,len(predictions))])
             rejected = np.where(predictions == -1)[0]
             predictions[rejected] = -1
+            # predictions[rejected] = 0
 
         # Majority Vote
         if self.majority_vote:
@@ -363,12 +364,12 @@ class EMGClassifier(EMGPredictor):
             probabilities.append(pred_list[pred_list.index(max(pred_list))])
         return np.array(prediction_vals), np.array(probabilities)
         
-    def _rejection_helper(self, prediction, prob):
+    def _rejection_helper(self, prediction, prob, rej_value=-1):
         if self.rejection:
             if prob > self.rejection_threshold:
                 return prediction
             else:
-                return -1
+                return rej_value
         return prediction
     
     def _majority_vote_helper(self, predictions):
@@ -390,7 +391,7 @@ class EMGClassifier(EMGPredictor):
                 velocity_metric = self.velocity_metric_handle(window[mod])
             
             velocity_output = (velocity_metric - self.th_min_dic[c])/(self.th_max_dic[c] - self.th_min_dic[c])
-            print(velocity_output)
+            # print(velocity_output)
             if self.velocity_mapping_handle:
                 velocity_output = self.velocity_mapping_handle(velocity_output)
             return '{0:.2f}'.format(min([1, max([velocity_output, 0])]))
@@ -756,10 +757,12 @@ class OnlineStreamer(ABC):
         
         self.odh.prepare_smm()
         # TODO: Laura add IMU support here
-        print("modalities:")
-        print(self.odh.modalities)
+        # print("modalities:")
+        # print(self.odh.modalities)
+        modalities = ['emg']
         # self.expected_count = {mod:self.window_size for mod in self.odh.modalities}
-        self.expected_count = {'emg': 222}
+        self.expected_count = {mod:self.window_size for mod in modalities}
+        # self.expected_count = {'emg': 222}
         print("expected count:")
         print(self.expected_count)
         # todo: deal with different sampling frequencies for different modalities
@@ -778,7 +781,6 @@ class OnlineStreamer(ABC):
 
             val, count = self.odh.get_data(N=self.window_size)
             # TODO: Laura add IMU support here
-            modalities = ['emg']
             # modality_ready = [count[mod] > self.expected_count[mod] for mod in self.odh.modalities]
             modality_ready = [count[mod] > self.expected_count[mod] for mod in modalities]
 
@@ -944,18 +946,23 @@ class OnlineEMGClassifier(OnlineStreamer):
     def stop_running(self):
         """Kills the process streaming classification decisions.
         """
-        self.process.terminate()
+        if self.process.is_alive():
+            self.process.terminate()
 
     def write_output(self, model_input, window):
         # Make prediction
         probabilities = self.predictor.model.predict_proba(model_input)
         prediction, probability = self.predictor._prediction_helper(probabilities)
+
+        # print(f"Input: {model_input}; Probabilities: {probabilities}")
+
         prediction = prediction[0]
 
         # Check for rejection
         if self.predictor.rejection:
             #TODO: Right now this will default to -1
-            prediction = self.predictor._rejection_helper(prediction, probability)
+            # LAURA changed this to 0 because we want rejected samples to default to class 0 which is no motion
+            prediction = self.predictor._rejection_helper(prediction, probability, rej_value=0)
         self.previous_predictions.append(prediction)
         
         # Check for majority vote
