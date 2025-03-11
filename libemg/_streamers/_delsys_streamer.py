@@ -165,6 +165,8 @@ class DelsysEMGStreamer(Process):
         for item in self.shared_memory_items:
             self.smm.create_variable(*item)
 
+        # Start recording to shared memory manager as default behaviour
+        self.start_recording()
         # Set up handlers for shared memory
         def write_emg(emg):
             if self.recording_signal.is_set():
