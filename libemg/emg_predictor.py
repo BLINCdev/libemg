@@ -664,16 +664,10 @@ class OnlineStreamer(ABC):
 
         self.files = {}
         self.tcp = tcp
-        if not tcp:
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        else:
-            print("Waiting for TCP connection...")
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-            self.sock.bind((ip, port))
-            self.sock.listen()
-            self.conn, addr = self.sock.accept()
-            print(f"Connected by {addr}")
+        # Initialize sockets AFTER process is started. Sockets are resources and
+        # should not be shared between processes.
+        self.sock = None
+        self.conn = None
 
         self.process = Process(target=self._run_helper, daemon=True,)
     
@@ -747,6 +741,19 @@ class OnlineStreamer(ABC):
         with open(self.options['file_path'] +  'mdl' + str(number) + '.pkl', 'rb') as handle:
             self.predictor = pickle.load(handle)
             print(f"Loaded model #{number}.")
+
+
+    def connect(self):
+        if not self.tcp:
+            self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        else:
+            print("Waiting for TCP connection...")
+            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            self.sock.bind((self.ip, self.port))
+            self.sock.listen()
+            self.conn, addr = self.sock.accept()
+            print(f"Connected by {addr}")
     
 
     def _run_helper(self):
@@ -754,8 +761,12 @@ class OnlineStreamer(ABC):
             self.prepare_smm()
             self.options['smm'].modify_variable("active_flag", lambda x:1)
             self.options["smm"].modify_variable("adapt_flag", lambda x: -1)
-        
-        self.odh.prepare_smm()
+
+        self.connect()
+
+        # ODH automatically calls prepare_smm() on initialization. It is undefined
+        # behavior to call it again.
+        # self.odh.prepare_smm()
         # TODO: Laura add IMU support here
         # print("modalities:")
         # print(self.odh.modalities)
