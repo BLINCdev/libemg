@@ -664,16 +664,10 @@ class OnlineStreamer(ABC):
 
         self.files = {}
         self.tcp = tcp
-        if not tcp:
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        else:
-            print("Waiting for TCP connection...")
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-            self.sock.bind((ip, port))
-            self.sock.listen()
-            self.conn, addr = self.sock.accept()
-            print(f"Connected by {addr}")
+        # Initialize sockets AFTER process is started. Sockets are resources and
+        # should not be shared between processes.
+        self.sock = None
+        self.conn = None
 
         self.process = Process(target=self._run_helper, daemon=True,)
     
@@ -747,6 +741,19 @@ class OnlineStreamer(ABC):
         with open(self.options['file_path'] +  'mdl' + str(number) + '.pkl', 'rb') as handle:
             self.predictor = pickle.load(handle)
             print(f"Loaded model #{number}.")
+
+
+    def connect(self):
+        if not self.tcp:
+            self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        else:
+            print("Waiting for TCP connection...")
+            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            self.sock.bind((self.ip, self.port))
+            self.sock.listen()
+            self.conn, addr = self.sock.accept()
+            print(f"Connected by {addr}")
     
 
     def _run_helper(self):
@@ -754,8 +761,12 @@ class OnlineStreamer(ABC):
             self.prepare_smm()
             self.options['smm'].modify_variable("active_flag", lambda x:1)
             self.options["smm"].modify_variable("adapt_flag", lambda x: -1)
-        
-        self.odh.prepare_smm()
+
+        self.connect()
+
+        # ODH automatically calls prepare_smm() on initialization. It is undefined
+        # behavior to call it again.
+        # self.odh.prepare_smm()
         # TODO: Laura add IMU support here
         # print("modalities:")
         # print(self.odh.modalities)
@@ -889,9 +900,12 @@ class OnlineEMGClassifier(OnlineStreamer):
         True if shared memory items should be tracked while running, otherwise False. If True, 'model_input' and 'model_output' are expected to be passed in as smm_items.
     smm_items: list, default = None
         List of shared memory items. Each shared memory item should be a list of the format: [name: str, buffer size: tuple, dtype: dtype]. 
-        When modifying this variable, items with the name 'classifier_output' and 'classifier_input' are expected to be passed in to track classifier inputs and outputs.
+        When modifying this variable, items with the name 'classifier_output',
+        'classifier_input', and 'classifier_output_count'
+        are expected to be passed in to track classifier inputs and outputs.
         The 'classifier_input' item should be of the format ['classifier_input', (100, 1 + num_features), np.double]
         The 'classifier_output' item should be of the format ['classifier_output', (100, 1 + num_dofs), np.double].
+        The 'classifier_output_count' item should be of the format ['classifier_output_count', (1,1), np.int32].
         If None, defaults to:
         [
             ["classifier_output", (100,4), np.double], #timestamp, class prediction, confidence, velocity
@@ -922,9 +936,11 @@ class OnlineEMGClassifier(OnlineStreamer):
             smm_items = [
                 ["classifier_output", (100,4), np.double], #timestamp, class prediction, confidence, velocity
                 ["classifier_input", (100,1+32), np.double], # timestamp, <- features ->
+                ["classifier_output_count", (1,1), np.int32]
             ]
-        assert 'classifier_input' in [item[0] for item in smm_items], f"'model_input' tag not found in smm_items. Got: {smm_items}."
-        assert 'classifier_output' in [item[0] for item in smm_items], f"'model_output' tag not found in smm_items. Got: {smm_items}."
+        assert 'classifier_input' in [item[0] for item in smm_items], f"'classifier_input' tag not found in smm_items. Got: {smm_items}."
+        assert 'classifier_output' in [item[0] for item in smm_items], f"'classifier_output' tag not found in smm_items. Got: {smm_items}."
+        assert 'classifier_output_count' in [item[0] for item in smm_items], f"'classifier_output_count' tag not found in smm_items. Got: {smm_items}."
         super(OnlineEMGClassifier, self).__init__(offline_classifier, window_size, window_increment, online_data_handler,
                                                   file_path, file, smm, smm_items, features, port, ip, std_out, tcp, feature_queue_length)
         self.output_format = output_format
@@ -1011,7 +1027,9 @@ class OnlineEMGClassifier(OnlineStreamer):
                                                 insert_classifier_input)
             self.options['smm'].modify_variable("classifier_output",
                                                 insert_classifier_output)
-            self.options['classifier_smm_writes'] += 1
+            self.options['smm'].modify_variable("classifier_output_count",
+                                                lambda x: x + 1)
+            # self.options['classifier_smm_writes'] += 1
 
         if self.output_format == "predictions":
             message = str(prediction) + calculated_velocity + '\n'
