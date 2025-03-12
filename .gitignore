@@ -53,3 +53,6 @@ __pycache__/    # This ignores the pycache directory
 *.pyc
 .github/*
 .idea/*
+libemg/_datasets/__pycache__/*
+libemg/_streamers/__pycache__/*
+libemg/_datasets/__pycache__/full_reachable_workspace.cpython-311.pyc
