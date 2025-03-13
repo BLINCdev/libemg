@@ -655,8 +655,8 @@ class OnlineStreamer(ABC):
         self.options = {'file': file, 'file_path': file_path, 'std_out': std_out}
 
         required_smm_items = [  # these tags are also required
-            ["adapt_flag", (1,1), np.int32],
-            ["active_flag", (1,1), np.int8]
+            ["adapt_flag", (1,1), np.int32, Lock()],
+            ["active_flag", (1,1), np.int8, Lock()]
         ]
         smm_items.extend(required_smm_items)
         self.smm = smm
