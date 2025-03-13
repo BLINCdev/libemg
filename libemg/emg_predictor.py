@@ -664,10 +664,10 @@ class OnlineStreamer(ABC):
 
         self.files = {}
         self.tcp = tcp
-        # Initialize sockets AFTER process is started. Sockets are resources and
-        # should not be shared between processes.
         self.sock = None
         self.conn = None
+
+        # self.connect()
 
         self.process = Process(target=self._run_helper, daemon=True,)
     
@@ -675,6 +675,7 @@ class OnlineStreamer(ABC):
         if block:
             self._run_helper()
         else:
+            self.process = Process(target=self._run_helper, daemon=True,)
             self.process.start()
                     
     def prepare_smm(self):
@@ -1012,7 +1013,7 @@ class OnlineEMGClassifier(OnlineStreamer):
             row = [f"{time_stamp} {prediction} {probability[0]} {printed_velocity} {feat_str}"]
             writer.writerow(row)
             self.files['file_handle'].flush()
-        if "smm" in self.options.keys():
+        if self.smm:
             #assumed to have "classifier_input" and "classifier_output" keys
             # these are (1+)
             def insert_classifier_input(data):

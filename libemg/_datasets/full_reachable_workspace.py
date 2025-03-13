@@ -140,7 +140,7 @@ class FullReachableWorkspace(Dataset):
 			print(f"Extracting data for UNBRACED arm")
 			data_columns = [i for i in range(8, 15)]
 
-		odh.get_data(folder_location=str(dataset_path), regex_filters=regex_filters, delimiter=",", skiprows=1, data_column=data_columns, sort_files=True)
+		odh.get_data(folder_location=str(dataset_path), regex_filters=regex_filters, delimiter=" ", skiprows=1, data_column=data_columns, sort_files=True)
 		# odh.get_data(folder_location=self.dataset_folder, regex_filters=regex_filters, delimiter=",", skiprows=1, data_column=data_columns, sort_files=False)
 		
 		if self.training_limb_positions == 1:
