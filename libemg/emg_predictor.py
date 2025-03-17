@@ -767,7 +767,25 @@ class OnlineStreamer(ABC):
 
         # ODH automatically calls prepare_smm() on initialization. It is undefined
         # behavior to call it again.
-        # self.odh.prepare_smm()
+
+        # So this is a bit tricky to explain, but there is a reason that
+        # ODH's prepare_smm is called here.
+        # It is worth remembering that ODH is using a SharedMemoryManager internally,
+        # and that in itself uses a numpy array backed by a shared buffer.
+        # On instantiating the ODH, the shared buffer is created and the numpy array
+        # is created with it.
+        # Unfortunately, when this instance is passed to the predictor, the entire
+        # object is pickled and then unpickled in the new process. This appears to
+        # break the backing buffer of the numpy array, and the numpy array is no longer
+        # updated by the EMG streamers.
+        # It is unclear if this implementation is wrong/subtly unsafe since these
+        # interactions are not documented in the multiprocessing module. The better
+        # way would have been is to instantiate the ODH in the new process, but this
+        # would require a lot of changes to the current implementation. The original
+        # implementation seems to just call prepare_smm to reinitialize the numpy array
+        # buffer.
+        self.odh.prepare_smm()
+
         # TODO: Laura add IMU support here
         # print("modalities:")
         # print(self.odh.modalities)
@@ -778,9 +796,11 @@ class OnlineStreamer(ABC):
         print("expected count:")
         print(self.expected_count)
         # todo: deal with different sampling frequencies for different modalities
-        self.odh.reset()
+        # NOTE: If odh is reset, it will subtly break everything else expecting a
+        # monotonic count of samples, including the Recorder. Do not reset the odh.
+        # self.odh.reset()
         
-        files = {}
+        # files = {}
         fe = FeatureExtractor()
         while True:
             if self.smm:
