@@ -56,3 +56,15 @@ __pycache__/    # This ignores the pycache directory
 libemg/_datasets/__pycache__/*
 libemg/_streamers/__pycache__/*
 libemg/_datasets/__pycache__/full_reachable_workspace.cpython-311.pyc
+libemg/_datasets/__pycache__/__init__.cpython-311.pyc
+libemg/_datasets/__pycache__/_3DC.cpython-311.pyc
+libemg/_datasets/__pycache__/ciil.cpython-311.pyc
+libemg/_datasets/__pycache__/continous_transitions.cpython-311.pyc
+libemg/_datasets/__pycache__/dataset.cpython-311.pyc
+libemg/_datasets/__pycache__/emg_epn612.cpython-311.pyc
+libemg/_datasets/__pycache__/fors_emg.cpython-311.pyc
+libemg/_datasets/__pycache__/full_reachable_workspace.cpython-311.pyc
+libemg/_datasets/__pycache__/grab_myo.cpython-311.pyc
+libemg/_datasets/__pycache__/myodisco.cpython-311.pyc
+libemg/_datasets/__pycache__/nina_pro.cpython-311.pyc
+libemg/_datasets/__pycache__/one_subject_myo.cpython-311.pyc

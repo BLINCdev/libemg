@@ -890,7 +890,7 @@ class OnlineDataHandler(DataHandler):
 #         pyplot.show()
 
 
-    def visualize_channels(self, channels, num_samples=500, y_axes=None):
+    def visualize_channels(self, channels, num_samples=500, y_axes=None, plot_emg=True, plot_imu=False):
         """Visualize individual channels (each channel in its own plot)."""
         try:
             print("Starting visualization...")
@@ -910,11 +910,18 @@ class OnlineDataHandler(DataHandler):
             #     print(f"{key} shape: {data[key].shape}")
             
             pyplot.style.use('ggplot')
-            fig, ax = pyplot.subplots(2, 1, figsize=(12, 6), height_ratios=[1, 9])
+            if plot_emg and plot_imu:
+                fig, ax = pyplot.subplots(2, 1, figsize=(12, 6), height_ratios=[1, 9])
+            elif plot_emg and not plot_imu:
+                fig, ax = pyplot.subplots(2, 1, figsize=(12, 6), height_ratios=[20, 1])
+            elif not plot_emg and plot_imu:
+                fig, ax = pyplot.subplots(2, 1, figsize=(12, 6), height_ratios=[1, 20])
+            else:
+                raise ValueError("Plot EMG and plot IMU both set to False -- what do you want to visualize?!")
             
             # Initialize plots based on available data
             lines = []
-            if 'emg' in data:
+            if plot_emg and 'emg' in data:
                 emg_lines = []
                 # Plot EMG channels if EMG data is available
                 for i in channels:
@@ -923,7 +930,7 @@ class OnlineDataHandler(DataHandler):
                         emg_lines.append(line)
                 ax[0].set_title('EMG Data')
                 lines.append(emg_lines)
-            if 'imu' in data:
+            if plot_imu and 'imu' in data:
                 # If only IMU is available, ignore the input channels and plot all IMU channels
                 imu_lines = []
                 imu_labels = ['Acc_X', 'Acc_Y', 'Acc_Z', 'Gyro_X', 'Gyro_Y', 'Gyro_Z', 'Mag_X', 'Mag_Y', 'Mag_Z']
@@ -941,7 +948,7 @@ class OnlineDataHandler(DataHandler):
             def update(frame):
                 try:
                     data, _ = self.get_data()
-                    if 'emg' in data and len(data['emg']) > 0:
+                    if plot_emg and 'emg' in data and len(data['emg']) > 0:
                         mod_data = data['emg']
                         # print(f"Debug - EMG data shape: {mod_data.shape}")  # Debug print
                         
@@ -956,7 +963,7 @@ class OnlineDataHandler(DataHandler):
                             lines[0][i].set_data(x_data, mod_data[:, i] + (spacing * i))   
 
 
-                    if 'imu' in data and len(data['imu']) > 0:
+                    if plot_imu and 'imu' in data and len(data['imu']) > 0:
                         # Update IMU plots - use all channels regardless of input channel list
                         mod_data = data['imu']
                         # print(f"Debug - IMU data shape: {mod_data.shape}")  # Debug print

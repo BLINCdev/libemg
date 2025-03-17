@@ -765,6 +765,9 @@ class OnlineStreamer(ABC):
 
         self.connect()
 
+        # ODH automatically calls prepare_smm() on initialization. It is undefined
+        # behavior to call it again.
+
         # So this is a bit tricky to explain, but there is a reason that
         # ODH's prepare_smm is called here.
         # It is worth remembering that ODH is using a SharedMemoryManager internally,
@@ -782,6 +785,7 @@ class OnlineStreamer(ABC):
         # implementation seems to just call prepare_smm to reinitialize the numpy array
         # buffer.
         self.odh.prepare_smm()
+
         # TODO: Laura add IMU support here
         # print("modalities:")
         # print(self.odh.modalities)
