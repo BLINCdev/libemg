@@ -910,7 +910,14 @@ class OnlineDataHandler(DataHandler):
             #     print(f"{key} shape: {data[key].shape}")
             
             pyplot.style.use('ggplot')
-            fig, ax = pyplot.subplots(2, 1, figsize=(12, 6), height_ratios=[1, 9])
+            if plot_emg and plot_imu:
+                fig, ax = pyplot.subplots(2, 1, figsize=(12, 6), height_ratios=[1, 9])
+            elif plot_emg and not plot_imu:
+                fig, ax = pyplot.subplots(2, 1, figsize=(12, 6), height_ratios=[20, 1])
+            elif not plot_emg and plot_imu:
+                fig, ax = pyplot.subplots(2, 1, figsize=(12, 6), height_ratios=[1, 20])
+            else:
+                raise ValueError("Plot EMG and plot IMU both set to False -- what do you want to visualize?!")
             
             # Initialize plots based on available data
             lines = []
