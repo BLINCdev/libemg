@@ -989,6 +989,7 @@ class OnlineEMGClassifier(OnlineStreamer):
         # print(f"Input: {model_input}; Probabilities: {probabilities}")
 
         prediction = prediction[0]
+        smm_probabilities = probabilities[0] if probabilities.ndim > 1 else probabilities
 
         # Check for rejection
         if self.predictor.rejection:
@@ -1037,7 +1038,7 @@ class OnlineEMGClassifier(OnlineStreamer):
                 return data
             def insert_classifier_output(data):
                 output_size = self.options['smm'].variables['classifier_output']["shape"][0]
-                data[:] = np.vstack((np.hstack([time_stamp, prediction, probability[0], float(printed_velocity)]), data))[:output_size,:]
+                data[:] = np.vstack((np.hstack([time_stamp, prediction, smm_probabilities, float(printed_velocity)]), data))[:output_size,:]
                 return data
             self.options['smm'].modify_variable("classifier_input",
                                                 insert_classifier_input)
