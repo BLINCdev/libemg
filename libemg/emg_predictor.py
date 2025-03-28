@@ -862,9 +862,9 @@ class OnlineStreamer(ABC):
                 self.write_output(model_input, window)
             
             # Check for user input (e.g., the 'q' key) without blocking
-            if keyboard.is_pressed('q'):  # Check if 'q' is pressed
-                print("User pressed 'q'. Exiting real time prediction loop.")
-                break  
+            # if keyboard.is_pressed('q'):  # Check if 'q' is pressed
+            #     print("User pressed 'q'. Exiting real time prediction loop.")
+            #     break  
 
 
     def install_standardization(self, standardization: np.ndarray | StandardScaler):
@@ -1000,7 +1000,7 @@ class OnlineEMGClassifier(OnlineStreamer):
         if self.predictor.rejection:
             #TODO: Right now this will default to -1
             # LAURA changed this to 0 because we want rejected samples to default to class 0 which is no motion
-            prediction = self.predictor._rejection_helper(prediction, probability, rej_value=0)
+            prediction = self.predictor._rejection_helper(prediction, probability, rej_value=-1)
         self.previous_predictions.append(prediction)
         
         # Check for majority vote
