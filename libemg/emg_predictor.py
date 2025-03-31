@@ -1055,6 +1055,7 @@ class OnlineEMGClassifier(OnlineStreamer):
 
         if self.output_format == "predictions":
             if prediction == -1:
+                print(f"Rejected {prediction[0]}")
                 message = "0" + calculated_velocity + '\n'
             else:
                 message = str(prediction) + calculated_velocity + '\n'
