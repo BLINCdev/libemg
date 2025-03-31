@@ -862,9 +862,9 @@ class OnlineStreamer(ABC):
                 self.write_output(model_input, window)
             
             # Check for user input (e.g., the 'q' key) without blocking
-            if keyboard.is_pressed('q'):  # Check if 'q' is pressed
-                print("User pressed 'q'. Exiting real time prediction loop.")
-                break  
+            # if keyboard.is_pressed('q'):  # Check if 'q' is pressed
+            #     print("User pressed 'q'. Exiting real time prediction loop.")
+            #     break  
 
 
     def install_standardization(self, standardization: np.ndarray | StandardScaler):

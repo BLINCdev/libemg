@@ -47,10 +47,11 @@ test_*.py
 *.csv
 test_delsys_api.py
 resources/
-__pycache__/    # This ignores the pycache directory
-*.py[cod]       # This ignores .pyc, .pyo, and .pyd files
-*$py.class      # This ignores Python class files
+# Python cache files
 *.pyc
+__pycache__/
+*/__pycache__/
+*/*/__pycache__/
 .github/*
 .idea/*
 libemg/_datasets/__pycache__/*
