@@ -1000,7 +1000,7 @@ class OnlineEMGClassifier(OnlineStreamer):
         if self.predictor.rejection:
             #TODO: Right now this will default to -1
             # LAURA changed this to 0 because we want rejected samples to default to class 0 which is no motion
-            prediction = self.predictor._rejection_helper(prediction, probability, rej_value=0)
+            prediction = self.predictor._rejection_helper(prediction, probability, rej_value=-1)
         self.previous_predictions.append(prediction)
         
         # Check for majority vote
@@ -1054,7 +1054,10 @@ class OnlineEMGClassifier(OnlineStreamer):
             # self.options['classifier_smm_writes'] += 1
 
         if self.output_format == "predictions":
-            message = str(prediction) + calculated_velocity + '\n'
+            if prediction == -1:
+                message = "0" + calculated_velocity + '\n'
+            else:
+                message = str(prediction) + calculated_velocity + '\n'
         elif self.output_format == "probabilities":
             message = ' '.join([f'{i:.2f}' for i in probabilities[0]]) + calculated_velocity + " " + str(time_stamp)
         else:
