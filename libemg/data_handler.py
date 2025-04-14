@@ -332,7 +332,7 @@ class OfflineDataHandler(DataHandler):
                 data_files.sort()
         # Read data from files
         for file in data_files:
-            # print(file)
+            print(file)
             if '.hea' in file:
                 # The key is the emg key that is in the mrdf file
                 file_data = (wfdb.rdrecord(file.replace('.hea',''))).__getattribute__(mrdf_key)

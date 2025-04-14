@@ -36,7 +36,7 @@ class FullReachableWorkspace(Dataset):
 						2000, # sampling rate 1111 or 2000?
 						7, # number of sensors (note we are using only data from the unbraced arm, set braced=True to use braced arm data)
 						'Delsys',
-						16, # number of participants
+						17, # number of participants
 						{0: "Neutral", 1: "Elbow Flexion", 2: "Elbow Extension", 3: "Elbow Extension to Neutral", 
 						 4: "Pronation", 5: "Supination", 6: "Supination to Neutral", 
 						 7: "Wrist Flexion", 8: "Wrist Extension", 9: "Wrist Extension to Neutral", 
@@ -140,7 +140,7 @@ class FullReachableWorkspace(Dataset):
 			print(f"Extracting data for UNBRACED arm")
 			data_columns = [i for i in range(8, 15)]
 
-		odh.get_data(folder_location=self.dataset_folder, regex_filters=regex_filters, delimiter=",", skiprows=1, data_column=data_columns, sort_files=False)
+		odh.get_data(folder_location=self.dataset_folder, regex_filters=regex_filters, delimiter=",", skiprows=1, data_column=data_columns, sort_files=True)
 
 		
 		if self.training_limb_positions == 1:
