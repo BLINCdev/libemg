@@ -358,7 +358,8 @@ def delsys_api_streamer(license             : str = None,
                         num_channels        : int = None,
                         dll_folder          : str = 'resources/',
                         shared_memory_items : list | None = None,
-                        emg                 : bool = True):
+                        emg                 : bool = True,
+                        imu                 : bool = False):
     """The streamer for the Delsys devices that use their new C#.NET API. 
 
     This function connects to the Delsys. Note that you must have the Delsys .dll files (found here: https://github.com/delsys-inc/Example-Applications/tree/main/Python/resources), 
@@ -379,6 +380,8 @@ def delsys_api_streamer(license             : str = None,
         ["tag", (size), datatype].
     emg : bool : (optional)
         Whether to collect emg data or not.
+    imu : bool : (optional)
+        Whether to collect imu data or not.
     Returns
     ----------
     Object: streamer
@@ -391,14 +394,25 @@ def delsys_api_streamer(license             : str = None,
     """
     assert license is not None
     assert key is not None
+    # if shared_memory_items is None:
+    #     shared_memory_items = []
+    #     if emg:
+    #         shared_memory_items.append(["emg",       (5300,num_channels), np.double])
+    #         shared_memory_items.append(["emg_count", (1,1),    np.int32])
+    # for item in shared_memory_items:
+    #     item.append(Lock())
     if shared_memory_items is None:
         shared_memory_items = []
         if emg:
-            shared_memory_items.append(["emg",       (5300,num_channels), np.double])
+            shared_memory_items.append(["emg",       (8000, num_channels), np.double])
             shared_memory_items.append(["emg_count", (1,1),    np.int32])
+        if imu:
+            shared_memory_items.append(["imu",       (600, num_channels*9), np.double])
+            shared_memory_items.append(["imu_count", (1,1),    np.int32])
     for item in shared_memory_items:
         item.append(Lock())
     
+
     delsys = DelsysAPIStreamer(key, license, dll_folder, shared_memory_items=shared_memory_items, emg=emg)
     delsys.start()
     return delsys, shared_memory_items
