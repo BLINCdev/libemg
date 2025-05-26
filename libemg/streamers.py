@@ -359,6 +359,7 @@ def delsys_api_streamer(license             : str = None,
                         dll_folder          : str = 'resources/',
                         shared_memory_items : list | None = None,
                         emg                 : bool = True,
+                        imp                 : bool = False,
                         imu                 : bool = False):
     """The streamer for the Delsys devices that use their new C#.NET API. 
 
@@ -380,6 +381,8 @@ def delsys_api_streamer(license             : str = None,
         ["tag", (size), datatype].
     emg : bool : (optional)
         Whether to collect emg data or not.
+    imp : bool : (optional)
+        Whether to collect impedance data or not.
     imu : bool : (optional)
         Whether to collect imu data or not.
     Returns
@@ -406,8 +409,11 @@ def delsys_api_streamer(license             : str = None,
         if emg:
             shared_memory_items.append(["emg",       (8000, num_channels), np.double])
             shared_memory_items.append(["emg_count", (1,1),    np.int32])
-        if imu:
-            shared_memory_items.append(["imu",       (600, num_channels*9), np.double])
+        if imp: 
+            shared_memory_items.append(["imp",       (300, num_channels), np.double])
+            shared_memory_items.append(["imp_count", (1,1),    np.int32])
+        if imu: # num_channels*6 because ACC X, Y, Z, GYRO X, Y, Z
+            shared_memory_items.append(["imu",       (600, num_channels*6), np.double])
             shared_memory_items.append(["imu_count", (1,1),    np.int32])
     for item in shared_memory_items:
         item.append(Lock())

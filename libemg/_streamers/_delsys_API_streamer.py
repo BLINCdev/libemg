@@ -6,6 +6,7 @@ See CollectDataController.py for a usage example.
 import numpy as np
 from libemg.shared_memory_manager import SharedMemoryManager
 from multiprocessing import Process, Event, Lock
+import traceback
 
 class DataKernel():
     def __init__(self, trigno_base):
@@ -105,20 +106,27 @@ class DataKernel():
         
 
 class DelsysAPIStreamer(Process):
-    def __init__(self, key, license, dll_folder = 'resources/', shared_memory_items:   list = [],
-                       emg:                   bool = True):
+    def __init__(self, key, license, dll_folder = 'resources/', shared_memory_items: list = [],
+                       emg: bool = True,
+                       imp: bool = False,
+                       imu: bool = False):
         Process.__init__(self, daemon=True)
 
         self.dll_folder = dll_folder
         self.connected = False
         self.signal = Event()
+        self.recording_signal = Event()
         self.shared_memory_items = shared_memory_items
         self.key = key 
         self.license = license
         
         self.emg = emg
+        self.imp = imp
+        self.imu = imu
         
         self.emg_handlers = []
+        self.imp_handlers = []
+        self.imu_handlers = []
     
     def connect(self, key, license):
         try:
@@ -157,6 +165,22 @@ class DelsysAPIStreamer(Process):
     def add_emg_handler(self, h):
         self.emg_handlers.append(h)
 
+    def add_imp_handler(self, h):
+        self.imp_handlers.append(h)
+
+    def add_imu_handler(self, h):
+        self.imu_handlers.append(h)    
+
+    def start_recording(self):
+        """Start writing data to the shared memory buffer."""
+        print("Started writing to buffer")
+        self.recording_signal.set()
+
+    def stop_recording(self):
+        """Stop writing data to the shared memory buffer."""
+        print("Stopped writing to buffer")
+        self.recording_signal.clear()
+
     def run(self):
         try:
             from collections import deque
@@ -174,13 +198,29 @@ class DelsysAPIStreamer(Process):
         self.smm = SharedMemoryManager()
         for item in self.shared_memory_items:
             self.smm.create_variable(*item)
+        # Start recording to shared memory manager as default behaviour
+        self.start_recording()
 
+        # Set up handlers for shared memory
         def write_emg(emg):
-            # update the samples in "emg"
-            self.smm.modify_variable("emg", lambda x: np.vstack((np.flip(emg,0), x))[:x.shape[0],:])
-            # update the number of samples retrieved
-            self.smm.modify_variable("emg_count", lambda x: x + emg.shape[0])
+            if self.recording_signal.is_set():
+                # update the samples in "emg"
+                self.smm.modify_variable("emg", lambda x: np.vstack((np.flip(emg,0), x))[:x.shape[0],:])
+                # update the number of samples retrieved
+                self.smm.modify_variable("emg_count", lambda x: x + emg.shape[0])
         self.add_emg_handler(write_emg)
+
+        def write_imp(imp):
+            if self.recording_signal.is_set():
+                self.smm.modify_variable("imp", lambda x: np.vstack((np.flip(imp,0), x))[:x.shape[0],:])
+                self.smm.modify_variable("imp_count", lambda x: x + imp.shape[0])
+        self.add_imp_handler(write_imp)
+
+        def write_imu(imu):
+            if self.recording_signal.is_set():
+                self.smm.modify_variable("imu", lambda x: np.vstack((np.flip(imu,0), x))[:x.shape[0],:])
+                self.smm.modify_variable("imu_count", lambda x: x + imu.shape[0])
+        self.add_imu_handler(write_imu)
 
         self.connect(self.key, self.license)
 
@@ -190,6 +230,8 @@ class DelsysAPIStreamer(Process):
             channelobjects = []
             datahandler = DataKernel(self.trigbase)
             emg_idxs = []
+            imp_idxs = []
+            imu_idxs = []
 
             for i in range(len(self.sensors)):
                 print(f"INIT Checking modes for sensor {i}: {self.sensors[i].FriendlyName}")
@@ -211,7 +253,11 @@ class DelsysAPIStreamer(Process):
                         datahandler.allcollectiondata.append([])
 
                         emg_idxs.append("EMG" in selectedSensor.TrignoChannels[channel].Name)
-
+                        imp_idxs.append("IMP" in selectedSensor.TrignoChannels[channel].Name)
+                        imu_idxs.append(any(x in selectedSensor.TrignoChannels[channel].Name for x in ["ACC", "GYRO"]))
+            # print(f"EMG idxs: {emg_idxs}")
+            # print(f"IMP idxs: {imp_idxs}")
+            # print(f"IMU idxs: {imu_idxs}")
             self.trigbase.Start(False)
             
             while True:
@@ -220,17 +266,71 @@ class DelsysAPIStreamer(Process):
                     # convert to one single np array
                     if outArr is not None:
                         emg_data = []
+                        imp_data = []
+                        imu_data = []
+                        # First pass: collect all IMU data and find the minimum length
+                        imu_channel_data = []
+                        min_length = float('inf')
                         for i in range(len(outArr)):
                             if emg_idxs[i]:
                                 emg_data.append(outArr[i][0])
+                            elif imp_idxs[i]:
+                                imp_data.append(outArr[i][0])
+                            elif imu_idxs[i]:
+                                channel_data = np.array(outArr[i][0])
+                                if channel_data.ndim == 1:
+                                    channel_data = channel_data.reshape(-1, 1)
+                                imu_channel_data.append(channel_data)
+                                min_length = min(min_length, len(channel_data))
+                                # print(f"IMU Channel {i} data shape: {channel_data.shape}")
+                            else:
+                                print(f"ERROR: Channel {i} is not EMG, IMP, or IMU")
+                        
+                        # Second pass: trim all channels to the minimum length
+                        if imu_channel_data:
+                            imu_data = np.hstack([data[:min_length] for data in imu_channel_data])
+                            # print(f"Combined IMU data shape: {imu_data.shape}")
+                        
+                        # handle emg data
                         emg_data = np.array(emg_data).T
                         if emg_data.shape[1] == 1:
                             emg_data = emg_data[:,None]
+                        # print(f"EMG data shape: {emg_data.shape}")
+                        
                         for e in self.emg_handlers:
                             e(emg_data)
+
+                        # handle imp data
+                        imp_data = np.array(imp_data).T
+                        if imp_data.shape[1] == 1:
+                            imp_data = imp_data[:,None]
+                        # print(f"IMP data shape: {imp_data.shape}")
+                        for i in self.imp_handlers:
+                            i(imp_data)
+
+                        # handle imu data
+                        if imu_data.size > 0:  # Only process if we have IMU data
+                            try:
+                                for i in self.imu_handlers:
+                                    i(imu_data)
+                            except Exception as e:
+                                print(f"Error processing IMU data: {str(e)}")
+                                print(f"Error type: {type(e)}")
+                                print(f"IMU data shape: {imu_data.shape}")
+                                print(f"IMU data type: {imu_data.dtype}")
+                                print(f"IMU data sample: {imu_data[:5]}")  # Print first 5 rows
+                                print(f"Full traceback: {traceback.format_exc()}")
                 except Exception as e:
                     print("LibEMG -> DelsysAPIStreamer: Error ocurred " + str(e))
-                    
+                    print(f"Error type: {type(e)}")
+                    print(f"Full traceback: {traceback.format_exc()}")
+                    print(f"outArr type: {type(outArr)}")
+                    if outArr is not None:
+                        print(f"outArr length: {len(outArr)}")
+                        for i, arr in enumerate(outArr):
+                            print(f"Channel {i} type: {type(arr)}")
+                            if len(arr) > 0:
+                                print(f"Channel {i} data type: {type(arr[0])}")
                 if self.signal.is_set():
                     self.cleanup()
                     break
