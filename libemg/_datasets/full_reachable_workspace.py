@@ -136,6 +136,7 @@ class FullReachableWorkspace(Dataset):
 		if self.braced:
 			print(f"Extracting data for BRACED arm")
 			data_columns = [i for i in range(1, 8)] 
+			# data_columns = [1, 2, 4, 5, 6, 7] 
 		else:
 			print(f"Extracting data for UNBRACED arm")
 			data_columns = [i for i in range(8, 15)]

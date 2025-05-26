@@ -989,9 +989,11 @@ class OnlineEMGClassifier(OnlineStreamer):
     def write_output(self, model_input, window):
         # Make prediction
         probabilities = self.predictor.model.predict_proba(model_input)
+        probabilities = np.array(probabilities)
         prediction, probability = self.predictor._prediction_helper(probabilities)
 
-        # print(f"Input: {model_input}; Probabilities: {probabilities}")
+        # print(f"Probabilities: {probabilities}")
+        # print(f"Prediction: {prediction}")
 
         prediction = prediction[0]
         smm_probabilities = probabilities[0] if probabilities.ndim > 1 else probabilities
@@ -1000,7 +1002,7 @@ class OnlineEMGClassifier(OnlineStreamer):
         if self.predictor.rejection:
             #TODO: Right now this will default to -1
             # LAURA changed this to 0 because we want rejected samples to default to class 0 which is no motion
-            prediction = self.predictor._rejection_helper(prediction, probability, rej_value=-1)
+            prediction = self.predictor._rejection_helper(prediction, probability, rej_value=0)
         self.previous_predictions.append(prediction)
         
         # Check for majority vote
@@ -1055,7 +1057,7 @@ class OnlineEMGClassifier(OnlineStreamer):
 
         if self.output_format == "predictions":
             if prediction == -1:
-                print(f"Rejected {prediction[0]}")
+                # print(f"Rejected {prediction[0]}")
                 message = "0" + calculated_velocity + '\n'
             else:
                 message = str(prediction) + calculated_velocity + '\n'
