@@ -192,6 +192,10 @@ class DelsysAPIStreamer(Process):
             emg_idxs = []
 
             for i in range(len(self.sensors)):
+                print(f"INIT Checking modes for sensor {i}: {self.sensors[i].FriendlyName}")
+                # sample_modes = self.getSampleModes(i)
+                # print(f"\tSample modes for sensor {i}: {sample_modes}") # careful this is a long list lol
+                print(f"\tCurrent mode for sensor {i}: {self.getCurMode(i)}")
 
                 selectedSensor = self.trigbase.GetSensorObject(i)
                 print("(" + str(selectedSensor.PairNumber) + ") " + str(selectedSensor.FriendlyName))
@@ -231,6 +235,31 @@ class DelsysAPIStreamer(Process):
                     self.cleanup()
                     break
             print("LibEMG -> DelsysStreamer (process ended).")
+
+    # ---------------------------------------------------------------------------------
+    # ---- Helper Functions
+
+    def getSampleModes(self, sensorIdx):
+        """Gets the list of sample modes available for selected sensor"""
+        sampleModes = self.trigbase.AvailibleSensorModes(sensorIdx)
+        # Convert .NET array to Python list
+        return [str(mode) for mode in sampleModes]
+
+    def getCurMode(self, sensorIdx):
+        """Gets the current mode of the sensors"""
+        if sensorIdx >= 0 and sensorIdx < len(self.sensors):
+            curModes = self.trigbase.GetCurrentSensorMode(sensorIdx)
+            return curModes
+        else:
+            return None
+
+    def setSampleMode(self, curSensor, setMode):
+        """Sets the sample mode for the selected sensor"""
+        self.trigbase.SetSampleMode(curSensor, setMode)
+        mode = self.getCurMode(curSensor)
+        sensor = self.trigbase.GetSensorObject(curSensor)
+        if mode == setMode:
+            print("(" + str(sensor.PairNumber) + ") " + str(sensor.FriendlyName) +" Mode Change Successful")
 
     def cleanup(self):
         pass
