@@ -308,6 +308,7 @@ class OfflineDataHandler(DataHandler):
             # sort first by rep and then by gestures 0 through 10
             return int(parts[4]), int(parts[5].split('.')[0])
 
+        print(f"Extracting data files from folder location: {folder_location}")
         if not os.path.isdir(folder_location):
             raise ValueError(f"Folder location {folder_location} is not a directory.")
 
@@ -332,7 +333,7 @@ class OfflineDataHandler(DataHandler):
                 data_files.sort()
         # Read data from files
         for file in data_files:
-            print(file)
+            # print(file)
             if '.hea' in file:
                 # The key is the emg key that is in the mrdf file
                 file_data = (wfdb.rdrecord(file.replace('.hea',''))).__getattribute__(mrdf_key)

@@ -72,6 +72,7 @@ class FullReachableWorkspace(Dataset):
 			if location.exists():
 				dataset_path = location
 				print(f"Found dataset at: {dataset_path}")
+				self.dataset_folder = dataset_path
 				break
 				
 		if dataset_path is None:
@@ -83,6 +84,8 @@ class FullReachableWorkspace(Dataset):
 
 		if subjects_values is None:
 			subjects_values = [f"{i:02}" for i in range(1, self.num_subjects + 1)]
+			subjects_values.append('99')
+
 		
 		if sets_values is None:
 			sets_values = ['trial1', 'trial2', 'trial3']
