@@ -176,7 +176,7 @@ class DelsysAPIStreamer(Process):
         print(f"all_scanned_sensors: {all_scanned_sensors}")
         # for sensor in all_scanned_sensors:
         self.sensor_order = []
-        for i in range(14):
+        for i in range(len(all_scanned_sensors)):
             sensor = self.trigbase.GetSensorObject(i)
             print(str(i) + "(" + str(sensor.PairNumber) + ") " +
                 sensor.FriendlyName + "\n" +
