@@ -988,7 +988,7 @@ class OnlineEMGClassifier(OnlineStreamer):
 
     def write_output(self, model_input, window):
         # Make prediction
-        probabilities = self.predictor.model.predict_proba(model_input)
+        probabilities = np.array(self.predictor.model.predict_proba(model_input))
         prediction, probability = self.predictor._prediction_helper(probabilities)
 
         # print(f"Input: {model_input}; Probabilities: {probabilities}")

@@ -64,7 +64,8 @@ class FullReachableWorkspace(Dataset):
 		possible_locations = [
 			Path.home() / "Repositories" / "blinc-dev" / "oi-tmr-experiment" / self.dataset_folder,  # Default libemg location
 			Path.cwd() / self.dataset_folder,  # Current working directory
-			Path(__file__).parent.parent.parent.parent / self.dataset_folder  # Project root directory
+			Path(__file__).parent.parent.parent.parent / self.dataset_folder,  # Project root directory
+			Path(__file__).parent.parent.parent.parent / "oi-tmr-experiment" / self.dataset_folder  # Project root directory
 		]
 		
 		dataset_path = None
