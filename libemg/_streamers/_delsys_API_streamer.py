@@ -144,17 +144,44 @@ class DelsysAPIStreamer(Process):
         self.select_sensors()
 
     def scan(self):
+        '''
+        outArr = outArr[12, 2, 4, 6, 13, 7, 10, 5, 9, 14, 11, 8, 3, 1]
+        1 slots (starting at 12) occupied by sensor 85894 with sticker number 12
+        1 slots (starting at 2) occupied by sensor 85619 with sticker number 2
+        1 slots (starting at 4) occupied by sensor 85890 with sticker number 4
+        1 slots (starting at 6) occupied by sensor 85768 with sticker number 6
+        1 slots (starting at 13) occupied by sensor 85829 with sticker number 13
+        1 slots (starting at 7) occupied by sensor 85645 with sticker number 7
+        1 slots (starting at 10) occupied by sensor 85854 with sticker number 10
+        1 slots (starting at 5) occupied by sensor 85639 with sticker number 5
+        1 slots (starting at 9) occupied by sensor 85853 with sticker number 9
+        1 slots (starting at 14) occupied by sensor 85784 with sticker number 14
+        1 slots (starting at 11) occupied by sensor 85840 with sticker number 11
+        1 slots (starting at 8) occupied by sensor 85653 with sticker number 8
+        1 slots (starting at 3) occupied by sensor 85949 with sticker number 3
+        1 slots (starting at 1) occupied by sensor 85884 with sticker number 1
+        '''
         try:
             f = self.trigbase.ScanSensors().Result
+            print(f"ScanSensors: {f}")
+            # for i in range(14):
+            #     self.trigbase.SelectSensor(i)
+            #     f = self.trigbase.GetScannedSensorsFound()
+            #     print(f"SENSORS SENSORS SENSORS Found: {f}")
         except Exception as e:
             print(str(e))
 
         all_scanned_sensors = self.trigbase.GetScannedSensorsFound()
         print("Sensors Found:\n")
-        for sensor in all_scanned_sensors:
-            print("(" + str(sensor.PairNumber) + ") " +
+        print(f"all_scanned_sensors: {all_scanned_sensors}")
+        # for sensor in all_scanned_sensors:
+        self.sensor_order = []
+        for i in range(14):
+            sensor = self.trigbase.GetSensorObject(i)
+            print(str(i) + "(" + str(sensor.PairNumber) + ") " +
                 sensor.FriendlyName + "\n" +
                 sensor.Configuration.ModeString + "\n")
+            self.sensor_order.append(sensor.PairNumber-1)
         return all_scanned_sensors
 
     def select_sensors(self):
@@ -259,28 +286,75 @@ class DelsysAPIStreamer(Process):
             # print(f"IMP idxs: {imp_idxs}")
             # print(f"IMU idxs: {imu_idxs}")
             self.trigbase.Start(False)
-            
+            # sensor_order = [11, 1, 3, 5, 12, 6, 9, 4, 8, 13, 10, 7, 2, 0]
             while True:
                 try:
+                    """
+                    EXPECTED SHAPES
+                    EMG data shape: (34, 14)
+                    IMP data shape: (2, 14)
+                    imu_data shape: (4, 84)
+                    """
                     outArr = datahandler.GetData()
+                    
+                    # print(f"outArr: {outArr}")  
                     # convert to one single np array
                     if outArr is not None:
-                        emg_data = []
-                        imp_data = []
+                        # print(f"shape of outArr: {len(outArr)}")
+                        # print(f"outArr: {outArr}")
+                        # # reorder outArr to match the order of the paired sensors by number
+                        # outArr = [outArr[i] for i in [11, 1, 3, 5, 12, 6, 9, 4, 8, 13, 10, 7, 2, 0]] 
+                        # print(f"shape of NEW outArr: {len(outArr)}")
+                        # print(f"NEW outArr: {outArr}")
+                        # exit()
+                        # ------------------------
+                        # OLD WORKING CODE
+                        # emg_data = []
+                        # imp_data = []
+                        # imu_data = []
+                        # # First pass: collect all IMU data and find the minimum length
+                        # imu_channel_data = []
+                        # min_length = float('inf')
+                        # for i in range(len(outArr)):
+                        #     if emg_idxs[i]:
+                        #         emg_data.append(outArr[i][0])
+                        #     elif imp_idxs[i]:
+                        #         imp_data.append(outArr[i][0])
+                        #     elif imu_idxs[i]:
+                        #         channel_data = np.array(outArr[i][0])
+                        #         if channel_data.ndim == 1:
+                        #             channel_data = channel_data.reshape(-1, 1)
+                        #         imu_channel_data.append(channel_data)
+                        #         min_length = min(min_length, len(channel_data))
+                        #         # print(f"IMU Channel {i} data shape: {channel_data.shape}")
+                        #     else:
+                        #         print(f"ERROR: Channel {i} is not EMG, IMP, or IMU")
+                        # if imu_channel_data:
+                        #     imu_data = np.hstack([data[:min_length] for data in imu_channel_data])
+                        #     print(f"Combined IMU data shape: {imu_data.shape}")
+                        # ------------------------------
+                        
+                        emg_data = [0]*len(self.sensor_order)
+                        imp_data = [0]*len(self.sensor_order)
                         imu_data = []
+                        # imu_channel_data = []
                         # First pass: collect all IMU data and find the minimum length
-                        imu_channel_data = []
+                        imu_channel_data = [0]*len(self.sensor_order)*6
                         min_length = float('inf')
+                        imu_counter = 0
                         for i in range(len(outArr)):
                             if emg_idxs[i]:
-                                emg_data.append(outArr[i][0])
+                                emg_data[self.sensor_order[i//8]] = outArr[i][0]
                             elif imp_idxs[i]:
-                                imp_data.append(outArr[i][0])
+                                imp_data[self.sensor_order[i//8]] = outArr[i][0]
                             elif imu_idxs[i]:
                                 channel_data = np.array(outArr[i][0])
                                 if channel_data.ndim == 1:
                                     channel_data = channel_data.reshape(-1, 1)
-                                imu_channel_data.append(channel_data)
+                                # imu_channel_data.append(channel_data)
+                                imu_channel_data[self.sensor_order[i//8] * 6 + imu_counter] = channel_data
+                                imu_counter += 1
+                                imu_counter = imu_counter % 6
                                 min_length = min(min_length, len(channel_data))
                                 # print(f"IMU Channel {i} data shape: {channel_data.shape}")
                             else:
@@ -309,6 +383,8 @@ class DelsysAPIStreamer(Process):
                             i(imp_data)
 
                         # handle imu data
+                        # imu_data = np.array(imu_data).T
+                        # print(f"imu_data shape: {imu_data.shape}")
                         if imu_data.size > 0:  # Only process if we have IMU data
                             try:
                                 for i in self.imu_handlers:
