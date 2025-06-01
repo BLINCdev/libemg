@@ -991,7 +991,8 @@ class OnlineEMGClassifier(OnlineStreamer):
         probabilities = np.array(self.predictor.model.predict_proba(model_input))
         prediction, probability = self.predictor._prediction_helper(probabilities)
 
-        # print(f"Input: {model_input}; Probabilities: {probabilities}")
+        # print(f"Probabilities: {probabilities}")
+        # print(f"Prediction: {prediction}")
 
         prediction = prediction[0]
         smm_probabilities = probabilities[0] if probabilities.ndim > 1 else probabilities
@@ -1055,7 +1056,7 @@ class OnlineEMGClassifier(OnlineStreamer):
 
         if self.output_format == "predictions":
             if prediction == -1:
-                print(f"Rejected {prediction[0]}")
+                # print(f"Rejected {prediction[0]}")
                 message = "0" + calculated_velocity + '\n'
             else:
                 message = str(prediction) + calculated_velocity + '\n'
