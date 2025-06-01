@@ -33,7 +33,7 @@ class FullReachableWorkspace(Dataset):
 
 	def __init__(self, dataset_folder="FullReachableWorkspace", braced=False, training_limb_positions=0, train_participants=[], test_participants=[], neutral_transitions=False, oitmr=False):
 		Dataset.__init__(self, 
-						2000, # sampling rate 1111 or 2000?
+						1259, # old trigno sampling rate 1111 or 2000? New 1259
 						7, # number of sensors (note we are using only data from the unbraced arm, set braced=True to use braced arm data)
 						'Delsys',
 						17, # number of participants
@@ -64,7 +64,8 @@ class FullReachableWorkspace(Dataset):
 		possible_locations = [
 			Path.home() / "Repositories" / "blinc-dev" / "oi-tmr-experiment" / self.dataset_folder,  # Default libemg location
 			Path.cwd() / self.dataset_folder,  # Current working directory
-			Path(__file__).parent.parent.parent.parent / self.dataset_folder  # Project root directory
+			Path(__file__).parent.parent.parent.parent / self.dataset_folder,  # Project root directory
+			Path(__file__).parent.parent.parent.parent / "oi-tmr-experiment" / self.dataset_folder  # Project root directory
 		]
 		
 		dataset_path = None

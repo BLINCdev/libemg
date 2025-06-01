@@ -901,6 +901,7 @@ class OnlineDataHandler(DataHandler):
             
             self.prepare_smm()
             data, _ = self.get_data(N=0, filter=True)
+            self.num_active_sensors = len(channels)
             
             if not data:
                 raise ValueError("No data available to visualize")
@@ -933,10 +934,16 @@ class OnlineDataHandler(DataHandler):
                 lines.append(emg_lines)
             if plot_imu and 'imu' in data:
                 # If only IMU is available, ignore the input channels and plot all IMU channels
+                len_imu = data['imu'].shape[1] // self.num_active_sensors
+                print(f"len_imu: {len_imu}")
+                print(f"data['imu'].shape: {data['imu'].shape}")
                 imu_lines = []
-                imu_labels = ['Acc_X', 'Acc_Y', 'Acc_Z', 'Gyro_X', 'Gyro_Y', 'Gyro_Z', 'Mag_X', 'Mag_Y', 'Mag_Z']
+                if len_imu == 9:
+                    imu_labels = ['Acc_X', 'Acc_Y', 'Acc_Z', 'Gyro_X', 'Gyro_Y', 'Gyro_Z', 'Mag_X', 'Mag_Y', 'Mag_Z']
+                else:
+                    imu_labels = ['Acc_X', 'Acc_Y', 'Acc_Z', 'Gyro_X', 'Gyro_Y', 'Gyro_Z']
                 for i in range(data['imu'].shape[1]):
-                    line, = ax[1].plot([], [], label=f"{imu_labels[i%9]}_{i//9+1}")
+                    line, = ax[1].plot([], [], label=f"{imu_labels[i%len_imu]}_{i//len_imu+1}")
                     imu_lines.append(line)
                 ax[1].set_title('IMU Data')
                 lines.append(imu_lines)
@@ -970,7 +977,7 @@ class OnlineDataHandler(DataHandler):
                         # print(f"Debug - IMU data shape: {mod_data.shape}")  # Debug print
                         
 
-                        imu_samples = num_samples // 9
+                        imu_samples = num_samples // len_imu
                         if len(mod_data) > imu_samples:
                             mod_data = mod_data[-imu_samples:]
                         
